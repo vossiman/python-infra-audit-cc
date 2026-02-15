@@ -1,0 +1,36 @@
+{
+  "name": "python-infra-audit-cc",
+  "version": "1.0.0",
+  "description": "Python infrastructure audit skill for Claude Code — audit projects against a known-good blueprint",
+  "bin": {
+    "python-infra-audit-cc": "bin/install.js"
+  },
+  "files": [
+    "bin",
+    "commands",
+    "infra",
+    "hooks"
+  ],
+  "engines": {
+    "node": ">=16.7.0"
+  },
+  "keywords": [
+    "claude-code",
+    "python",
+    "infrastructure",
+    "audit",
+    "linting",
+    "ruff",
+    "pyright",
+    "pre-commit",
+    "docker",
+    "ci-cd"
+  ],
+  "author": "vossi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vossiman/python-infra-audit-cc.git"
+  },
+  "homepage": "https://github.com/vossiman/python-infra-audit-cc#readme"
+}
