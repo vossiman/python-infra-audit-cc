@@ -82,35 +82,9 @@ It additively merges its hook into `settings.json` alongside any existing hooks 
 
 If you customize any installed files, the installer detects changes on update and backs them up to `infra-audit-local-patches/` before overwriting.
 
-## Development
+## Contributing
 
-### Local dev setup
-
-The installer uses `__dirname` to find source files, so running it directly from the repo always installs your working copy:
-
-```bash
-node bin/install.js --global
-```
-
-After editing any source files, re-run the same command to update `~/.claude/`.
-
-### Publishing a new version
-
-1. Bump version in `package.json`
-2. Update `CHANGELOG.md`
-3. Commit and tag:
-   ```bash
-   git add -A && git commit -m "Release vX.Y.Z"
-   git tag vX.Y.Z
-   ```
-4. Publish to npm (requires a [granular access token](https://www.npmjs.com/settings/tokens) with publish permissions):
-   ```bash
-   npm publish
-   ```
-5. Push:
-   ```bash
-   git push && git push --tags
-   ```
+See [RELEASING.md](RELEASING.md) for development setup and publishing instructions.
 
 ## License
 
