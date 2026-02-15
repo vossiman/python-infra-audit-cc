@@ -86,30 +86,13 @@ If you customize any installed files, the installer detects changes on update an
 
 ### Local dev setup
 
-Symlink the repo into `~/.claude/` so your local skill always reflects your working copy:
+The installer uses `__dirname` to find source files, so running it directly from the repo always installs your working copy:
 
 ```bash
-# Remove any npm-installed copy first
-node bin/install.js --global --uninstall
-
-# Symlink individual files (commands/infra/ is a shared namespace)
-mkdir -p ~/.claude/commands/infra
-ln -s "$(pwd)/commands/infra/audit.md" ~/.claude/commands/infra/audit.md
-ln -s "$(pwd)/commands/infra/update.md" ~/.claude/commands/infra/update.md
-ln -s "$(pwd)/infra" ~/.claude/infra
-ln -s "$(pwd)/hooks/infra-check-update.js" ~/.claude/hooks/infra-check-update.js
+node bin/install.js --global
 ```
 
-Then manually add the hook to `~/.claude/settings.json` under `hooks.SessionStart`:
-
-```json
-{
-  "hooks": [{
-    "type": "command",
-    "command": "node \"~/.claude/hooks/infra-check-update.js\""
-  }]
-}
-```
+After editing any source files, re-run the same command to update `~/.claude/`.
 
 ### Publishing a new version
 
