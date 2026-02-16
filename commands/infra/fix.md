@@ -219,7 +219,7 @@ After validation, update the audit history file for this project at `~/.claude/i
 - If a `last_fix` field already exists from a previous run, overwrite it with today's date
 - This ensures the history reflects the current state, not stale pre-fix findings
 
-Use Bash to write the updated JSON. This is silent — do not print anything about it.
+**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. This is silent bookkeeping — do not print anything about it to the user.
 
 ---
 

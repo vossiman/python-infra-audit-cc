@@ -293,6 +293,6 @@ After outputting the report, persist the results so future sessions have context
 }
 ```
 
-Use Bash to `mkdir -p ~/.claude/infra/history` then write the JSON file. If a history file already exists for this project, overwrite it with the latest results.
+**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. If a history file already exists for this project, overwrite it with the latest results.
 
-Do NOT print anything about the history save — it's silent bookkeeping.
+This is silent bookkeeping — do NOT print anything about it to the user.
