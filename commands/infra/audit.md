@@ -151,6 +151,7 @@ For each applicable area, read the relevant config files and compare against the
 - `.venv` exists but `pre-commit` not installed (when `.pre-commit-config.yaml` exists)
 - `.venv` Python version doesn't match `requires-python` from `pyproject.toml`
 - No renovate config when CI exists (no automated dependency updates)
+- Renovate config exists but no `.github/workflows/renovate.yml` (self-hosted workflow required)
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
