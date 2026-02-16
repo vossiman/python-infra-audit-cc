@@ -14,7 +14,7 @@ allowed-tools:
   - TaskList
   - TaskGet
   - SendMessage
-argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|claude-md|all)"
+argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|claude-md|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
@@ -50,6 +50,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
 | venv | `.venv/bin/python` exists and is executable |
 | env | Config pattern — detect which config mechanism the project uses. Check for `.env`, `config.json`, `config.yaml`, `config.toml`, `settings.json`, `settings.yaml`, `.env.*` variants. Then check `.gitignore` for matching patterns and look for a corresponding example/template file (e.g. `example.env`, `config.example.json`, `config.json.example`). |
+| tests | `tests/` directory, or `test_*.py` / `*_test.py` files anywhere in the project. Also check for coverage config: `pytest-cov` in `pyproject.toml` dependencies, `[tool.coverage]` or `[tool.pytest.ini_options]` with `--cov` in `pyproject.toml`, or `.coveragerc` |
 | claude-md | `CLAUDE.md` in project root, `.claude/CLAUDE.md`, or `CLAUDE.md` files in subdirectories |
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
@@ -58,7 +59,7 @@ Print a styled detection summary using checkmarks and crosses. Split across two 
 
   [x] ruff        [x] pyright     [ ] pre-commit  [x] CI          [x] pyproject
   [x] uv          [ ] docker      [x] makefile    [x] alembic     [x] env
-  [x] claude-md
+  [x] tests       [x] claude-md
 ```
 Use `[x]` for detected and `[ ]` for not found.
 
@@ -134,6 +135,7 @@ For each applicable area, read the relevant config files and compare against the
 - Actual secrets (API keys matching `sk-`, `key-`, long hex strings) in tracked files
 - No `.venv` when Python source files exist (tools can't run without an environment)
 - Not a git repo (no `.git/` directory) — version control is a prerequisite for everything else
+- No test files at all (`tests/`, `test_*.py`, `*_test.py`) when Python source files exist
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)
@@ -154,6 +156,9 @@ For each applicable area, read the relevant config files and compare against the
 - `.venv` Python version doesn't match `requires-python` from `pyproject.toml`
 - No renovate config when CI exists (no automated dependency updates)
 - Renovate config exists but no `.github/workflows/renovate.yml` (self-hosted workflow required)
+- Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
+- Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
+- CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
@@ -163,6 +168,9 @@ For each applicable area, read the relevant config files and compare against the
 - Alternative CI provider (GitLab, CircleCI) — just note it
 - `docker-compose.yml` instead of `compose.yml` (old naming, still works)
 - Pyright not installed locally (may be run via CI only)
+- Coverage threshold below 80% (may be intentional for early-stage projects)
+- Tests exist but no `conftest.py` (may not need shared fixtures)
+- Low test-to-source ratio — count `test_*.py`/`*_test.py` files vs `*.py` source files (excluding `__init__.py`, `conftest.py`); flag if ratio is below 0.5
 
 ---
 
