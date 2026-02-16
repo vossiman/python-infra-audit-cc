@@ -160,6 +160,23 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 .venv/bin/pre-commit install
 ```
 
+**inline-snapshot setup** (when tests exist but inline-snapshot not in dependencies):
+1. Add `inline-snapshot` (and `dirty-equals` if not present) to `[project.optional-dependencies] dev` in `pyproject.toml`
+2. Run `uv sync --all-extras` (or `.venv/bin/pip install -e ".[dev]"`) to install
+3. If test files contain hand-written assertions against Pydantic `.model_dump()` / `.dict()` output (e.g. `assert result.model_dump() == {"field": "value", ...}`), refactor them to use `snapshot()`:
+   ```python
+   from inline_snapshot import snapshot
+   # Before: assert user.model_dump() == {"id": 1, "name": "test"}
+   # After:
+   assert user.model_dump() == snapshot({"id": 1, "name": "test"})
+   ```
+   For dynamic values (timestamps, auto-generated IDs), combine with `dirty-equals`:
+   ```python
+   from dirty_equals import IsInt, IsNow
+   assert user.model_dump() == snapshot({"id": IsInt(), "created_at": IsNow(), "name": "test"})
+   ```
+4. Verify with: `.venv/bin/pytest --inline-snapshot=short-report` — should pass without snapshot updates needed
+
 **Verifying a fix worked** — always validate using the local environment:
 ```bash
 .venv/bin/ruff check . --preview    # or: uv run ruff check .

@@ -43,7 +43,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
 | venv | `.venv/bin/python` exists and is executable |
 | env | Config pattern — detect which config mechanism the project uses. Check for `.env`, `config.json`, `config.yaml`, `config.toml`, `settings.json`, `settings.yaml`, `.env.*` variants. Then check `.gitignore` for matching patterns and look for a corresponding example/template file (e.g. `example.env`, `config.example.json`, `config.json.example`). |
-| tests | `tests/` directory, or `test_*.py` / `*_test.py` files anywhere in the project. Also check for coverage config: `pytest-cov` in `pyproject.toml` dependencies, `[tool.coverage]` or `[tool.pytest.ini_options]` with `--cov` in `pyproject.toml`, or `.coveragerc` |
+| tests | `tests/` directory, or `test_*.py` / `*_test.py` files anywhere in the project. Also check for coverage config: `pytest-cov` in `pyproject.toml` dependencies, `[tool.coverage]` or `[tool.pytest.ini_options]` with `--cov` in `pyproject.toml`, or `.coveragerc`. Also check for inline-snapshot testing: `inline-snapshot` in `pyproject.toml` dependencies, `dirty-equals` as companion library, and whether `pydantic` is a project dependency (indicates data models that benefit from snapshot testing). Grep test files for `from inline_snapshot import snapshot` to detect actual usage. |
 | claude-md | `CLAUDE.md` in project root, `.claude/CLAUDE.md`, or `CLAUDE.md` files in subdirectories |
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
@@ -237,6 +237,8 @@ For each applicable area, read the relevant config files and compare against the
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
+- Tests exist and `pydantic` is a project dependency but `inline-snapshot` not in dev dependencies — snapshot testing auto-generates and updates assertion data for Pydantic models, catching field drift without manual test maintenance
+- `inline-snapshot` is in dev dependencies but no test files contain `from inline_snapshot import snapshot` — dependency installed but not used
 - CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence — code may use features unavailable in CI's older Python)
 - Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the blueprint (e.g., `actions/checkout@v4` when blueprint has `@v6` — missed security patches)
 
@@ -251,6 +253,8 @@ For each applicable area, read the relevant config files and compare against the
 - Configured `fail_under` threshold is below 80% (may be intentional for early-stage projects)
 - Tests exist but no `conftest.py` (may not need shared fixtures)
 - Low test-to-source ratio — count `test_*.py`/`*_test.py` files vs `*.py` source files (excluding `__init__.py`, `conftest.py`); flag if ratio is below 0.5
+- Tests exist but `inline-snapshot` not in dev dependencies and project doesn't use Pydantic — snapshot testing is still useful for asserting complex data structures but less critical without data models
+- `inline-snapshot` used but `dirty-equals` not in dev dependencies — `dirty-equals` enables flexible matching for dynamic values (timestamps, auto-generated IDs) within snapshots via patterns like `IsInt()`, `IsNow()`, `IsUUID()`
 
 ---
 
