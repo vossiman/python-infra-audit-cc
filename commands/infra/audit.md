@@ -255,3 +255,40 @@ If score < 5.0:
 - Group findings by severity, then by area within each severity
 - Each finding must include a concrete, copy-pasteable fix (command, config snippet, or file to create)
 - If a CRITICAL finding has a one-liner fix, include the exact command
+
+---
+
+## Phase 4: Save audit history
+
+After outputting the report, persist the results so future sessions have context on what was audited and when.
+
+**History location:** `~/.claude/infra/history/`
+
+**Filename:** `{project-name}.json` — derived from `pyproject.toml` `[project] name` or the directory basename. Sanitize by replacing any non-alphanumeric characters (except `-` and `_`) with `_`.
+
+**Format:**
+```json
+{
+  "project": "my-project",
+  "path": "/absolute/path/to/repo",
+  "last_audit": "2026-02-16",
+  "score": 5.5,
+  "critical": 2,
+  "warnings": 3,
+  "info": 1,
+  "findings": [
+    {
+      "severity": "CRITICAL",
+      "area": "pre-commit",
+      "description": "No .pre-commit-config.yaml when ruff exists",
+      "current": "Missing",
+      "expected": ".pre-commit-config.yaml with ruff hooks",
+      "fix": "Create .pre-commit-config.yaml with ruff + ruff-format hooks"
+    }
+  ]
+}
+```
+
+Use Bash to `mkdir -p ~/.claude/infra/history` then write the JSON file. If a history file already exists for this project, overwrite it with the latest results.
+
+Do NOT print anything about the history save — it's silent bookkeeping.

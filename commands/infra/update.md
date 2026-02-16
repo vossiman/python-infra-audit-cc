@@ -49,6 +49,8 @@ npx python-infra-audit-cc@latest --global
 ```
 (or `--local` as appropriate)
 
+The installer preserves `infra/history/` — audit history is never overwritten or deleted by updates.
+
 ## Step 5: Clear update cache
 
 After successful update, remove the cached update check:

@@ -150,6 +150,7 @@ const PATCHES_DIR_NAME = 'infra-audit-local-patches';
 // Files we install (relative to config dir)
 const OUR_FILES = [
   'commands/infra/audit.md',
+  'commands/infra/fix.md',
   'commands/infra/update.md',
   'infra/blueprint.md',
   'infra/VERSION',
@@ -277,7 +278,19 @@ function install(isGlobal) {
     failures.push('commands/infra/update.md');
   }
 
-  // ── 3. infra/blueprint.md ──
+  // ── 3. commands/infra/fix.md ──
+  const fixSrc = path.join(src, 'commands', 'infra', 'fix.md');
+  const fixDest = path.join(configDir, 'commands', 'infra', 'fix.md');
+  let fixContent = fs.readFileSync(fixSrc, 'utf8');
+  fixContent = fixContent.replace(/~\/\.claude\//g, pathPrefix);
+  fs.writeFileSync(fixDest, fixContent);
+  if (fs.existsSync(fixDest)) {
+    console.log(`  ${green}✓${reset} Installed commands/infra/fix.md`);
+  } else {
+    failures.push('commands/infra/fix.md');
+  }
+
+  // ── 4. infra/blueprint.md (preserves infra/history/) ──
   const blueprintSrc = path.join(src, 'infra', 'blueprint.md');
   const blueprintDest = path.join(configDir, 'infra', 'blueprint.md');
   fs.mkdirSync(path.dirname(blueprintDest), { recursive: true });
@@ -361,6 +374,7 @@ function install(isGlobal) {
   // Hash all installed files
   const installedFiles = [
     { rel: 'commands/infra/audit.md', abs: auditDest },
+    { rel: 'commands/infra/fix.md', abs: fixDest },
     { rel: 'commands/infra/update.md', abs: updateDest },
     { rel: 'infra/blueprint.md', abs: blueprintDest },
     { rel: 'infra/VERSION', abs: versionDest },
@@ -382,6 +396,7 @@ function install(isGlobal) {
   ${green}Done!${reset} Launch Claude Code and run ${cyan}/infra:audit${reset}
 
   Other commands:
+    ${cyan}/infra:fix${reset}     — Auto-fix audit findings using parallel agents
     ${cyan}/infra:update${reset}  — Update to the latest version
 `);
 }
@@ -408,8 +423,10 @@ function uninstall(isGlobal) {
   let removedCount = 0;
 
   // Remove our specific files (selective — don't touch other files in commands/infra/)
+  // Note: infra/history/ is NOT removed — it's user data, not ours
   const filesToRemove = [
     'commands/infra/audit.md',
+    'commands/infra/fix.md',
     'commands/infra/update.md',
     'infra/blueprint.md',
     'infra/VERSION',

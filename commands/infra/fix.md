@@ -206,6 +206,15 @@ After all waves complete, re-run the audit logic and print a before/after summar
 
 If any fixes failed or the score didn't improve as expected, list what went wrong and suggest manual steps.
 
+### Update audit history
+
+After validation, update the audit history file for this project at `~/.claude/infra/history/{project-name}.json`:
+
+- Overwrite the file with the **new** post-fix audit results (same format as `infra:audit` Phase 4)
+- This ensures the history reflects the current state, not stale pre-fix findings
+
+Use Bash to write the updated JSON. This is silent — do not print anything about it.
+
 ---
 
 ## Rules
