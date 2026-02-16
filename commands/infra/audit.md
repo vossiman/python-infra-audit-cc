@@ -110,6 +110,38 @@ npx pyright 2>&1; echo "EXIT:$?"
 .venv/bin/pytest --collect-only -q 2>&1; echo "EXIT:$?"
 ```
 
+**6. Test execution & coverage** (when tests detected AND step 5 passed — skip if collection failed):
+
+First, determine coverage capability:
+```bash
+# Check if pytest-cov is installed
+.venv/bin/python -c "import pytest_cov" 2>/dev/null; echo "EXIT:$?"
+```
+
+Then check if `--cov` is already configured in `[tool.pytest.ini_options] addopts` (to avoid double-adding it):
+```bash
+.venv/bin/python -c "
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+with open('pyproject.toml', 'rb') as f:
+    d = tomllib.load(f)
+addopts = d.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('addopts', '')
+print('COV_IN_ADDOPTS' if '--cov' in addopts else 'NO_COV_IN_ADDOPTS')
+" 2>/dev/null || echo "NO_COV_IN_ADDOPTS"
+```
+
+Run the appropriate command based on what's available:
+- `--cov` already in addopts → `timeout 120 .venv/bin/pytest -q --tb=no 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"`
+- pytest-cov installed but NOT in addopts → `timeout 120 .venv/bin/pytest -q --tb=no --cov 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"`
+- No pytest-cov → `timeout 120 .venv/bin/pytest -q --tb=no 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"` (pass/fail only, no coverage)
+
+Parse the results:
+- Exit code from the `EXIT:` line — `0` = pass, `124` = timeout, anything else = test failure
+- If coverage was collected, look for the `TOTAL` line in the output (e.g. `TOTAL  1234  567  54%`) and extract the percentage value
+
 For each tool, record:
 - **pass**: exit code 0
 - **fail**: exit code non-zero — capture the first 10 lines of output as context for the finding
@@ -126,12 +158,19 @@ Also check for **version mismatches** that cause silent drift:
 - `ruff format --check .` fails locally (CI will reject unformatted code)
 - `pre-commit run --all-files` fails locally (CI runs the same hooks)
 - `pytest --collect-only` fails (test collection broken — CI can't even discover tests)
+- `pytest` fails (tests exit non-zero) — CI will reject failing tests
+- Actual coverage is 0% — tests exist but cover nothing
 
 **WARNING:**
 - Pyright fails locally (type errors CI may catch)
 - ruff version in `.venv` differs from version pinned in `.pre-commit-config.yaml` (silent behavior differences between local dev and hooks)
 - ruff version in `.venv` differs from version used in CI workflow (local passes, CI fails or vice versa)
 - Pre-commit hooks not registered in `.git/hooks/` when `.pre-commit-config.yaml` exists (hooks won't run on commit, issues slip through to CI)
+- `pytest` times out after 120s (tests hanging or too slow for CI)
+- Actual coverage below 50%
+
+**INFO:**
+- Actual coverage below 80% (but above 50%)
 
 ---
 
@@ -228,7 +267,7 @@ For each applicable area, read the relevant config files and compare against the
 - Alternative CI provider (GitLab, CircleCI) — just note it
 - `docker-compose.yml` instead of `compose.yml` (old naming, still works)
 - Pyright not installed locally (may be run via CI only)
-- Coverage threshold below 80% (may be intentional for early-stage projects)
+- Configured `fail_under` threshold is below 80% (may be intentional for early-stage projects)
 - Tests exist but no `conftest.py` (may not need shared fixtures)
 - Low test-to-source ratio — count `test_*.py`/`*_test.py` files vs `*.py` source files (excluding `__init__.py`, `conftest.py`); flag if ratio is below 0.5
 
