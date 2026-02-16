@@ -7,13 +7,6 @@ allowed-tools:
   - Grep
   - Bash
   - Task
-  - TeamCreate
-  - TeamDelete
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
-  - TaskGet
-  - SendMessage
 argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|claude-md|all)"
 ---
 
@@ -180,28 +173,16 @@ Also check for **version mismatches** that cause silent drift:
 
 After detection, you know which areas to audit. Each area's audit is independent — they read different config files and check different things. Parallelize them:
 
-**If 4+ areas to audit → use an agent team:**
-
-1. Create a team with `TeamCreate` (name: `infra-audit`)
-2. For each area, create a task with `TaskCreate` containing:
-   - The area name
-   - Which files to read and what to check (from the triggers below)
-   - The relevant blueprint section for comparison
-   - The detection results (which files exist, venv tool versions)
-3. Spawn one `Explore` agent per area using the `Task` tool with `team_name` set — these agents are read-only which is what we need
-4. Each agent returns its findings as a structured list: `severity | area | short description | current | expected | fix`
-5. Collect all findings, tear down the team with `TeamDelete`, proceed to Phase 3
-
-**If 2-3 areas to audit → use parallel sub-agents:**
+**If 2+ areas to audit → use parallel sub-agents:**
 
 1. Spawn one `Explore` sub-agent per area via the `Task` tool (no team)
 2. Launch all sub-agents in a single message (parallel tool calls)
-3. Each returns findings in the same structured format
-4. Collect and proceed to Phase 3
+3. Each returns findings as: `severity | area | short description | current | expected | fix`
+4. Collect all findings, proceed to Phase 3
 
 **If only 1 area → audit it directly.** No agents needed.
 
-**Sub-agent prompt template** — every agent (team or sub-agent) must receive:
+**Sub-agent prompt template** — every sub-agent must receive:
 - The area it's responsible for
 - The detection context (which files were found, venv tool versions if relevant)
 - The project's `requires-python` value (if found)
@@ -275,13 +256,11 @@ For each applicable area, read the relevant config files and compare against the
 
 ## Phase 2b: CLAUDE.md Audit
 
-This audit is cross-cutting — it validates that the project's CLAUDE.md accurately reflects the actual infrastructure. It runs as its own dedicated team after Phase 2 completes, because it needs both the detection results AND the infra audit findings as context.
+This audit is cross-cutting — it validates that the project's CLAUDE.md accurately reflects the actual infrastructure. It runs after Phase 2 completes, because it needs both the detection results AND the infra audit findings as context.
 
 **Skip this phase** if `claude-md` was not detected AND not explicitly requested. If the user requested only a specific non-claude-md area, also skip.
 
-### Team strategy — always use a dedicated team
-
-The CLAUDE.md audit always spawns its own team (`claude-md-audit`) with three parallel agents:
+### Agents
 
 1. **Extractor** (`Explore` agent) — Reads all CLAUDE.md files found in the project. Extracts and categorizes every claim:
    - **Commands**: shell commands, make targets, script invocations (e.g., `make lint`, `uv run pytest`, `./scripts/deploy.sh`)
@@ -304,14 +283,11 @@ The CLAUDE.md audit always spawns its own team (`claude-md-audit`) with three pa
    - Flag if common developer workflows are undocumented (how to run tests, how to lint, how to set up the project)
    - Returns: list of coverage gaps with `area | covered (yes/no) | details`
 
-### Execution flow
+### Execution strategy
 
-1. Create team `claude-md-audit` with `TeamCreate`
-2. Create tasks for all three agents
-3. Spawn **Extractor** first — it must complete before the Verifier can start
-4. Once Extractor returns, spawn **Verifier** and **Coverage checker** in parallel (Verifier gets the extracted claims; Coverage checker gets detection results)
-5. Collect all findings, tear down team with `TeamDelete`
-6. Merge findings into the main report alongside Phase 2 results
+1. Spawn **Extractor** as an `Explore` sub-agent via the `Task` tool — wait for it to return
+2. Once Extractor returns its claims, spawn **Verifier** and **Coverage checker** as `Explore` sub-agents in a single message (parallel `Task` calls) — pass the Extractor's claims to Verifier in its prompt, pass detection results to Coverage checker
+3. Collect all findings, merge into the main report alongside Phase 2 results
 
 ### CLAUDE.md audit triggers
 

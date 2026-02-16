@@ -1,6 +1,6 @@
 ---
 name: infra:fix
-description: Fix audit findings using parallel agents — teams if available, sub-agents otherwise
+description: Fix audit findings using parallel agents
 allowed-tools:
   - Read
   - Write
@@ -9,13 +9,6 @@ allowed-tools:
   - Grep
   - Bash
   - Task
-  - TeamCreate
-  - TeamDelete
-  - TaskCreate
-  - TaskUpdate
-  - TaskList
-  - TaskGet
-  - SendMessage
   - AskUserQuestion
 argument-hint: "[severity] (all|critical|warnings)"
 ---
@@ -91,24 +84,13 @@ Print the plan:
 
 ### Strategy selection
 
-**If 4+ fixes in any single wave → use an agent team:**
+**If 2+ fixes in a wave → use parallel sub-agents:**
 
-1. Create a team with `TeamCreate`
-2. For each fix in the wave, create a task with `TaskCreate` including:
-   - The area name
-   - The exact fix to apply (file content, command to run)
-   - The relevant blueprint section for reference
-3. Spawn one `general-purpose` agent per fix using the `Task` tool with `team_name` set, each assigned to one task
-4. Wait for all agents to complete, then proceed to the next wave
-5. Clean up the team with `TeamDelete` when done
-
-**If fewer than 4 fixes in a wave → use parallel sub-agents:**
-
-1. For each fix, spawn a `general-purpose` sub-agent via the `Task` tool (no team needed)
+1. For each fix, spawn a `general-purpose` sub-agent via the `Task` tool
 2. Run all sub-agents for the wave in a single message (parallel tool calls)
 3. Collect results and proceed to the next wave
 
-**If only 1-2 total fixes → just do them directly.** No agents needed.
+**If only 1 fix in a wave → just do it directly.** No agents needed.
 
 ### Running Python tools and commands
 
