@@ -156,7 +156,7 @@ If section has 0 findings, print the header then "None." on the next line.
 | pyright | PASS | ... |
 | ci | 1 warning | ... |
 
-**Summary footer** — open-right single-line box:
+**Summary footer** — compact open-right single-line box (keep this short, NO priority list here):
 ```
 ┌──────────────────────────────────────────────────────────────
 │  Passing: ruff, pyright, pre-commit, CI, ...
@@ -171,6 +171,16 @@ If score >= 9.0, add a line inside the footer:
 If score < 5.0:
 ```
 │  Significant infrastructure gaps -- prioritize CRITICAL fixes.
+```
+
+**Next steps** — only if there are action items. List outside the box with a section header, one item per line. Order by severity (critical first), then by impact:
+```
+━━━ NEXT STEPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1.  Add .pre-commit-config.yaml with ruff hooks
+  2.  Add CI workflow (.github/workflows/ci.yml)
+  3.  Move ruff lint config to [tool.ruff.lint] and add S rules
+  4.  Add pyrightconfig.json for type checking
 ```
 
 ### Rules
