@@ -135,11 +135,12 @@ For each applicable area, read the relevant config files and compare against the
 - Actual secrets (API keys matching `sk-`, `key-`, long hex strings) in tracked files
 - No `.venv` when Python source files exist (tools can't run without an environment)
 - Not a git repo (no `.git/` directory) — version control is a prerequisite for everything else
-- No test files at all (`tests/`, `test_*.py`, `*_test.py`) when Python source files exist
+- No test files at all (`tests/`, `test_*.py`, `*_test.py`) when Python source files exist — this is CRITICAL even if `pyproject.toml` configures testpaths or CI runs pytest, because that means CI is running against nothing
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)
 - ruff configured but missing import sorting (`I`)
+- ruff configured but missing complexity rules (`C901`, `PLR0913`, `PLR0912`, `PLR0915`) or missing `[tool.ruff.lint.mccabe]` / `[tool.ruff.lint.pylint]` thresholds
 - No type checker configured (pyright or mypy)
 - pre-commit hooks missing `ruff-format` (lint without format)
 - CI exists but doesn't run linting
@@ -159,6 +160,8 @@ For each applicable area, read the relevant config files and compare against the
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
+- CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence — code may use features unavailable in CI's older Python)
+- Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the blueprint (e.g., `actions/checkout@v4` when blueprint has `@v6` — missed security patches)
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
@@ -225,6 +228,7 @@ The CLAUDE.md audit always spawns its own team (`claude-md-audit`) with three pa
 - Detected infrastructure area has zero coverage in CLAUDE.md (e.g., Docker setup exists but CLAUDE.md never mentions containers, or Alembic exists but no migration guidance)
 - CLAUDE.md describes workflows that contradict actual CI configuration (e.g., says "we use pytest-cov" but CI doesn't run coverage)
 - No CLAUDE.md at all when project has 4+ detected infrastructure areas
+- CLAUDE.md lists key files but is missing more than a third of the actual source files (stale — files were likely added after CLAUDE.md was written)
 
 **INFO triggers:**
 - CLAUDE.md exists but is very short (< 20 lines) for a project with 5+ infra areas
