@@ -6,7 +6,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-argument-hint: "[area] (ruff|pyright|pre-commit|ci|pyproject|uv|venv|docker|makefile|alembic|env|all)"
+argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
@@ -25,6 +25,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 
 | Area | Detection files |
 |------|----------------|
+| git | `.git/` directory exists |
 | ruff | `pyproject.toml` containing `[tool.ruff]`, or `ruff.toml` |
 | pyright | `pyrightconfig.json` |
 | pre-commit | `.pre-commit-config.yaml` |
@@ -34,6 +35,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | docker | `Dockerfile*` or `compose.yml` or `docker-compose.yml` |
 | makefile | `Makefile` |
 | alembic | `alembic.ini` |
+| renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
 | venv | `.venv/bin/python` exists and is executable |
 | env | `.env` pattern (check `.gitignore` for `.env`, look for `example.env`) |
 
@@ -81,6 +83,7 @@ For each applicable area, read the relevant config files and compare against the
 - No `.gitignore` at all
 - Actual secrets (API keys matching `sk-`, `key-`, long hex strings) in tracked files
 - No `.venv` when Python source files exist (tools can't run without an environment)
+- Not a git repo (no `.git/` directory) — version control is a prerequisite for everything else
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)
@@ -99,6 +102,7 @@ For each applicable area, read the relevant config files and compare against the
 - `.venv` exists but `pytest` not installed (when test files exist)
 - `.venv` exists but `pre-commit` not installed (when `.pre-commit-config.yaml` exists)
 - `.venv` Python version doesn't match `requires-python` from `pyproject.toml`
+- No renovate config when CI exists (no automated dependency updates)
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
