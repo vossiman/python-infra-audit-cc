@@ -24,6 +24,10 @@ You are an infrastructure fixer. Your job is to resolve findings from an `infra:
 
 @~/.claude/infra/blueprint.md
 
+**Blueprint YAML files** — when fixing CI or Renovate, use these canonical workflows as the source of truth:
+- CI: `~/.claude/infra/blueprints/ci.yml`
+- Renovate: `~/.claude/infra/blueprints/renovate.yml`
+
 The user may optionally limit scope: `$ARGUMENTS`
 - `all` or empty: fix all CRITICAL and WARNING findings
 - `critical`: fix only CRITICAL findings

@@ -133,67 +133,38 @@ At minimum: `trailing-whitespace`, `end-of-file-fixer`, and the ruff hooks.
 
 ## 4. CI/CD (GitHub Actions)
 
-**Config location:** `.github/workflows/lint.yml` (or similar)
+**Config location:** `.github/workflows/ci.yml` (or similar)
 
-### Required jobs
-
-```yaml
-name: CI
-
-on:
-  pull_request:
-  push:
-    branches: [main, test]  # [ADAPT] your protected branches
-
-jobs:
-  ruff:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"  # [ADAPT]
-      - run: pip install ruff
-      - name: Ruff check
-        run: ruff check .
-      - name: Ruff format check
-        run: ruff format --check .
-
-  pyright:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"  # [ADAPT]
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: pip install uv
-      - run: uv sync --all-packages --all-extras
-      - name: Pyright type check
-        run: npx pyright
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"  # [ADAPT]
-      - run: pip install uv
-      - run: uv sync --all-packages --all-extras
-      - run: .venv/bin/pytest tests/ -v
-```
+**Canonical blueprint:** `infra/blueprints/ci.yml` — read this file for the full reference workflow.
 
 ### Key points
 - **3 blocking jobs**: ruff (lint+format), pyright (types), test (pytest) — all must pass
+- **All jobs use `uv sync`** to install dependencies, then run tools from `.venv/bin/`
 - **Triggered on PR + push to protected branches**: Catches issues before merge
 - **Each job is independent**: Can run in parallel, fail independently
 - **`ruff format --check`**: Ensures formatting without modifying files in CI
+- **`[ADAPT]`**: `python-version` and branch list are project-specific
 
 ### Minimum acceptable CI
 At minimum: a lint job and a test job, triggered on PRs.
+
+---
+
+## 4b. Renovate (Automated Dependency Updates)
+
+**Config location:** `.github/workflows/renovate.yml` + `renovate.json` in project root
+
+**Canonical blueprint:** `infra/blueprints/renovate.yml` — read this file for the full reference workflow.
+
+### Key points
+- **Scheduled monthly**: First Monday of each month at 2:00 AM UTC — avoids noise while staying current
+- **Manual trigger**: `workflow_dispatch` allows on-demand runs
+- **Token-based auth**: Uses `secrets.RENOVATE_TOKEN` — never hardcode
+- **Post-upgrade commands**: `make sync-locks` regenerates per-project lock files after dependency bumps
+- **`[ADAPT]`**: Action versions (`renovatebot/github-action`, `astral-sh/setup-uv`) should track latest stable
+
+### Minimum acceptable config
+A `renovate.json` with sensible defaults and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift.
 
 ---
 

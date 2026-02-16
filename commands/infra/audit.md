@@ -21,6 +21,10 @@ You are an infrastructure auditor. Audit the current project against the standar
 
 @~/.claude/infra/blueprint.md
 
+**Blueprint YAML files** — the blueprint references canonical workflow files. When auditing CI or Renovate, read the corresponding YAML for the full expected configuration:
+- CI: `~/.claude/infra/blueprints/ci.yml`
+- Renovate: `~/.claude/infra/blueprints/renovate.yml`
+
 The user may optionally specify an area to audit: `$ARGUMENTS`
 
 If `$ARGUMENTS` is empty or "all", audit all applicable areas. Otherwise audit only the specified area(s).
