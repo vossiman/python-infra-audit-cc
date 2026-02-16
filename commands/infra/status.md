@@ -20,13 +20,22 @@ Determine the project name:
 
 Sanitize the name: replace any non-alphanumeric characters (except `-` and `_`) with `_`.
 
+Compute the path hash for unique filename lookup:
+```bash
+PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
+```
+
 ---
 
 ## Step 2: Look up history
 
-Check for a history file at `~/.claude/infra/history/{project-name}.json`.
+Look up the history file using a fallback strategy:
 
-If the file **does not exist**, print:
+1. Try `~/.claude/infra/history/{sanitized}-{PATH_HASH}.json` (new format)
+2. Fall back to `~/.claude/infra/history/{sanitized}.json` (legacy format)
+3. If neither exists → no history found
+
+If **neither file exists**, print:
 
 ```
 ━━━ INFRA STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -122,3 +131,26 @@ If there are findings in the history, list up to 3 of the highest-severity ones 
 ```
 
 Only show this section if there are CRITICAL or WARNING findings. Skip for clean projects.
+
+### Run history
+
+Show this section only when the history file has a `runs` array with 2 or more entries. If the file is v1 (no `runs` array), skip this section entirely.
+
+```
+  History:     5 audits, 2 fixes over 36 days
+  Progression: 3.5 -> 5.5 -> 8.0 -> 9.5 -> 10.0
+  Trend:       +6.0 since first audit
+```
+
+**History line:**
+- Count entries with `"type": "audit"` and `"type": "fix"` separately
+- Time span: days between the earliest and latest `date` in the `runs` array
+- If span is 0, say "today" instead of "over 0 days"
+
+**Progression line:**
+- Show the `score` from each run entry in chronological order
+- If there are more than 8 entries, show the first 2 scores + ` ... ` + the last 5 scores (e.g. `3.5 -> 5.0 -> ... -> 8.0 -> 9.0 -> 9.5 -> 10.0 -> 10.0`)
+
+**Trend line:**
+- Delta between the first run's score and the last run's score
+- Use `+` prefix for positive, `-` for negative, `0.0` for no change (e.g. `+6.5 since first audit`)

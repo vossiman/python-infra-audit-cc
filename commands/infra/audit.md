@@ -399,31 +399,62 @@ After outputting the report, persist the results so future sessions have context
 
 **History location:** `~/.claude/infra/history/`
 
-**Filename:** `{project-name}.json` — derived from `pyproject.toml` `[project] name` or the directory basename. Sanitize by replacing any non-alphanumeric characters (except `-` and `_`) with `_`.
+### Filename with path hash
 
-**Format:**
+Compute a unique filename to avoid collisions between repos with the same name in different directories:
+
+```bash
+SANITIZED="{project-name}"   # same sanitized name from Phase 3
+PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
+HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
+LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
+```
+
+### Read existing history
+
+1. If `$HISTORY_FILE` exists, read it (via Read tool) and extract the `runs` array
+2. Else if `$LEGACY_FILE` exists, read it instead — this is a v1 migration
+3. If the file has no `runs` array (v1 schema), seed the array with one entry from the existing top-level fields:
+   ```json
+   {"date": "{last_audit}", "type": "audit", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
+   ```
+   If the file also has a `last_fix` field, add a second seed entry:
+   ```json
+   {"date": "{last_fix}", "type": "fix", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
+   ```
+   Sort the seeded entries by date.
+4. If no history file exists at all, start with an empty `runs` array
+
+### Append current run
+
+Add a new entry to the `runs` array:
+```json
+{"date": "{today}", "type": "audit", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
+```
+
+If `runs` has more than 50 entries after appending, drop the oldest entries to keep only the last 50.
+
+### Write schema v2 JSON
+
 ```json
 {
-  "project": "my-project",
-  "path": "/absolute/path/to/repo",
-  "last_audit": "2026-02-16",
-  "score": 5.5,
-  "critical": 2,
-  "warnings": 3,
-  "info": 1,
-  "findings": [
-    {
-      "severity": "CRITICAL",
-      "area": "pre-commit",
-      "description": "No .pre-commit-config.yaml when ruff exists",
-      "current": "Missing",
-      "expected": ".pre-commit-config.yaml with ruff hooks",
-      "fix": "Create .pre-commit-config.yaml with ruff + ruff-format hooks"
-    }
-  ]
+  "schema_version": 2,
+  "project": "{project-name}",
+  "path": "{absolute-repo-path}",
+  "last_audit": "{today}",
+  "score": {score},
+  "critical": {critical},
+  "warnings": {warnings},
+  "info": {info},
+  "findings": [ ... ],
+  "runs": [ ... ]
 }
 ```
 
-**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. If a history file already exists for this project, overwrite it with the latest results.
+**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report.
+
+### Cleanup legacy file
+
+If `$LEGACY_FILE` exists and `$LEGACY_FILE` differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file.
 
 This is silent bookkeeping — do NOT print anything about it to the user.

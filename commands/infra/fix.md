@@ -212,12 +212,47 @@ If any fixes failed or the score didn't improve as expected, list what went wron
 
 ### Update audit history
 
-After validation, update the audit history file for this project at `~/.claude/infra/history/{project-name}.json`:
+After validation, update the audit history file using the same filename and migration logic as `infra:audit` Phase 4.
 
-- Overwrite the file with the **new** post-fix audit results (same format as `infra:audit` Phase 4)
-- **Add a `last_fix` field** with today's date (ISO format, e.g. `"2026-02-16"`) alongside the existing `last_audit` field
-- If a `last_fix` field already exists from a previous run, overwrite it with today's date
-- This ensures the history reflects the current state, not stale pre-fix findings
+**Filename with path hash:**
+```bash
+SANITIZED="{project-name}"   # sanitized project name
+PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
+HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
+LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
+```
+
+**Read existing history:**
+1. If `$HISTORY_FILE` exists, read it and extract the `runs` array
+2. Else if `$LEGACY_FILE` exists, read it instead (v1 migration)
+3. If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra:audit` Phase 4)
+4. If no file exists, start with an empty `runs` array
+
+**Append current run** — add a new entry with `"type": "fix"`:
+```json
+{"date": "{today}", "type": "fix", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
+```
+
+If `runs` has more than 50 entries after appending, drop the oldest to keep only the last 50.
+
+**Write schema v2 JSON** — same format as `infra:audit` Phase 4, but also set the `last_fix` field:
+```json
+{
+  "schema_version": 2,
+  "project": "{project-name}",
+  "path": "{absolute-repo-path}",
+  "last_audit": "{last_audit from existing history, or today}",
+  "last_fix": "{today}",
+  "score": {score},
+  "critical": {critical},
+  "warnings": {warnings},
+  "info": {info},
+  "findings": [ ... ],
+  "runs": [ ... ]
+}
+```
+
+**Cleanup:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove it after writing.
 
 **IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. This is silent bookkeeping — do not print anything about it to the user.
 
