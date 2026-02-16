@@ -111,6 +111,13 @@ has_inline_snapshot = False
 has_dirty_equals = False
 has_pydantic = False
 has_pytest_cov = False
+has_vulture_config = False
+has_vulture_dep = False
+has_flask = False
+has_fastapi = False
+has_django = False
+has_celery = False
+has_click = False
 pyproject = {}
 
 if areas["pyproject"]:
@@ -152,6 +159,12 @@ if areas["pyproject"]:
             has_dirty_equals = "dirty-equals" in dep_names
             has_pydantic = "pydantic" in dep_names
             has_pytest_cov = "pytest-cov" in dep_names
+            has_vulture_dep = "vulture" in dep_names
+            has_flask = "flask" in dep_names
+            has_fastapi = "fastapi" in dep_names
+            has_django = "django" in dep_names
+            has_celery = "celery" in dep_names
+            has_click = "click" in dep_names
 
             # Coverage config
             tool = pyproject.get("tool", {})
@@ -163,6 +176,9 @@ if areas["pyproject"]:
                 has_coverage_config = True
             if has_pytest_cov:
                 has_coverage_config = True
+
+            # Vulture config
+            has_vulture_config = "vulture" in pyproject.get("tool", {})
         except Exception:
             pass
 
@@ -214,6 +230,16 @@ if areas["tests"]:
         except Exception:
             pass
 
+# ── Vulture pre-commit hook ──
+has_vulture_precommit = False
+if areas["pre_commit"] and os.path.isfile(".pre-commit-config.yaml"):
+    try:
+        with open(".pre-commit-config.yaml") as fh:
+            if "jendrikseipp/vulture" in fh.read():
+                has_vulture_precommit = True
+    except Exception:
+        pass
+
 # ── CLAUDE.md files ──
 claude_md_files = []
 if os.path.isfile("CLAUDE.md"):
@@ -260,6 +286,19 @@ result = {
         "has_pydantic": has_pydantic,
         "has_pytest_cov": has_pytest_cov,
         "uses_inline_snapshot": uses_inline_snapshot,
+    },
+    "vulture": {
+        "has_config": has_vulture_config,
+        "has_dep": has_vulture_dep,
+        "has_precommit_hook": has_vulture_precommit,
+    },
+    "frameworks": {
+        "flask": has_flask,
+        "fastapi": has_fastapi,
+        "django": has_django,
+        "celery": has_celery,
+        "click": has_click,
+        "pydantic": has_pydantic,
     },
 }
 print(json.dumps(result, indent=2))

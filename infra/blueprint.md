@@ -121,6 +121,17 @@ repos:
       - id: ruff-format
 ```
 
+### Optional recommended hooks
+
+```yaml
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14  # [ADAPT] match project vulture version
+    hooks:
+      - id: vulture
+```
+
+**Note:** The vulture hook scans the entire project (not just changed files). It reads `[tool.vulture]` from `pyproject.toml` for paths, excludes, and suppression rules. Configure `[tool.vulture]` before adding this hook.
+
 ### Rationale
 - **6 file-hygiene hooks**: Catch whitespace issues, malformed configs, and accidentally committed large files before they hit the repo
 - **ruff + ruff-format**: Lint and format in pre-commit ensures CI will pass — no "forgot to format" failures
@@ -420,7 +431,7 @@ __pycache__/
 
 **Tool:** [vulture](https://github.com/jendrikseipp/vulture)
 
-### Recommended setup
+### Dependency setup
 
 ```toml
 [project.optional-dependencies]
@@ -429,17 +440,100 @@ dev = [
 ]
 ```
 
-### Recommended invocation
+### pyproject.toml configuration (preferred)
+
+`[tool.vulture]` is the preferred config method — ensures consistency across CLI, pre-commit hook, and CI.
+
+```toml
+[tool.vulture]
+paths = ["src", "app"]            # [ADAPT] list source directories
+min_confidence = 80
+exclude = [
+    ".venv/",
+    "tests/",
+    "migrations/",
+    "node_modules/",
+    "__pycache__/",
+]
+```
+
+### Framework-specific `ignore_decorators`
+
+Add only decorators relevant to the project's actual frameworks. These suppress false positives from callbacks, routes, and fixtures that vulture cannot trace statically.
+
+```toml
+# Flask
+ignore_decorators = ["@app.route"]
+
+# FastAPI
+ignore_decorators = [
+    "@app.get", "@app.post", "@app.put", "@app.delete",
+    "@router.get", "@router.post", "@router.put", "@router.delete",
+]
+
+# Pydantic
+ignore_decorators = [
+    "@validator", "@field_validator", "@model_validator", "@computed_field",
+]
+
+# Celery
+ignore_decorators = ["@celery.task", "@shared_task"]
+
+# Click
+ignore_decorators = ["@click.command", "@click.group"]
+
+# Django
+ignore_decorators = ["@receiver", "@admin.register"]
+
+# pytest (always add when tests exist)
+ignore_decorators = ["@pytest.fixture"]
+```
+
+Combine decorators from all detected frameworks into a single `ignore_decorators` list.
+
+### Pattern-based suppression with `ignore_names`
+
+For names that follow a convention but are invoked dynamically:
+
+```toml
+ignore_names = [
+    "test_*",       # test functions (if scanning test dirs)
+    "visit_*",      # AST visitor pattern
+    "handle_*",     # event handler pattern
+]
+```
+
+### Whitelist file
+
+For persistent false positives that can't be suppressed by decorators or patterns:
+
+1. **Bootstrap**: `.venv/bin/vulture --make-whitelist > vulture_whitelist_candidates.py`
+2. **Review** the generated file — remove entries that are actual dead code
+3. **Rename** to `vulture_whitelist.py` and commit
+4. Vulture automatically picks up `vulture_whitelist.py` when listed in `paths` or passed as argument
+
+### Pre-commit hook
+
+```yaml
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14  # [ADAPT] match project vulture version
+    hooks:
+      - id: vulture
+```
+
+The hook is **blocking** (same as ruff). It reads `[tool.vulture]` from `pyproject.toml` — configure that section before adding the hook.
+
+### Fallback CLI invocation (no pyproject.toml config)
 
 ```bash
 vulture . --min-confidence 80 --exclude ".venv,tests,migrations,node_modules,__pycache__"
 ```
 
 ### Key points
-- **`--min-confidence 80`**: Filters low-confidence false positives from framework magic (Flask routes, pytest fixtures, Pydantic validators). Raise to 90 for fewer results, lower to 60 for stricter checking.
+- **`min_confidence = 80`**: Filters low-confidence false positives from framework magic. Raise to 90 for fewer results, lower to 60 for stricter checking.
 - **Exclude tests**: Tests reference code that appears "unused" from static analysis perspective
 - **Exclude migrations**: Auto-generated Alembic files contain framework-invoked code
-- **Whitelist file**: For persistent false positives, create `vulture_whitelist.py` and pass it as an argument
+- **`[tool.vulture]` is authoritative**: When present, both CLI and pre-commit hook read it — no need to pass args manually
 
 ### Minimum acceptable
 Optional quality check. 0-10 findings is good. >10 findings warrants review.

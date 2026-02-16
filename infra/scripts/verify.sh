@@ -36,6 +36,7 @@ print(f'PYTEST_IN_VENV={\"true\" if vt.get(\"pytest\") else \"false\"}')
 print(f'PRECOMMIT_IN_VENV={\"true\" if vt.get(\"pre_commit\") else \"false\"}')
 print(f'PYRIGHT_IN_VENV={\"true\" if vt.get(\"pyright\") else \"false\"}')
 print(f'VULTURE_IN_VENV={\"true\" if vt.get(\"vulture\") else \"false\"}')
+print(f'HAS_VULTURE_CONFIG={\"true\" if d.get(\"vulture\", {}).get(\"has_config\") else \"false\"}')
 print(f'LOCAL_RUFF_VER={vt.get(\"ruff\") or \"\"}')
 print(f'HAS_PYTEST_COV={\"true\" if t.get(\"has_pytest_cov\") else \"false\"}')
 print(f'COV_IN_ADDOPTS={\"true\" if t.get(\"cov_in_addopts\") else \"false\"}')
@@ -116,8 +117,15 @@ fi
 
 # Vulture dead code detection
 if [ "$VULTURE_IN_VENV" = true ]; then
-  VULTURE_ARGS=". --min-confidence 80 --exclude .venv,tests,migrations,node_modules,__pycache__"
-  [ -f vulture_whitelist.py ] && VULTURE_ARGS="$VULTURE_ARGS vulture_whitelist.py"
+  if [ "$HAS_VULTURE_CONFIG" = true ]; then
+    # [tool.vulture] in pyproject.toml — let vulture read its own config
+    VULTURE_ARGS=""
+    [ -f vulture_whitelist.py ] && VULTURE_ARGS="vulture_whitelist.py"
+  else
+    # No config — pass sensible defaults
+    VULTURE_ARGS=". --min-confidence 80 --exclude .venv,tests,migrations,node_modules,__pycache__"
+    [ -f vulture_whitelist.py ] && VULTURE_ARGS="$VULTURE_ARGS vulture_whitelist.py"
+  fi
   run_tool vulture .venv/bin/vulture $VULTURE_ARGS &
 fi
 
@@ -280,6 +288,7 @@ if local_ruff:
 ci_python_ver = None
 with open(detect_json) as f:
     detect = json.load(f)
+vulture_detection = detect.get('vulture', {})
 local_python = detect.get('venv_tools', {}).get('python')
 for cf in detect.get('ci_files', []):
     try:
@@ -310,6 +319,8 @@ result = {
     'pytest': pytest_res,
     'version_mismatches': version_mismatches,
     'vulture': vulture,
+    'vulture_config': vulture_detection.get('has_config', False),
+    'vulture_precommit': vulture_detection.get('has_precommit_hook', False),
     'hooks_registered': hooks_reg,
 }
 print(json.dumps(result, indent=2))

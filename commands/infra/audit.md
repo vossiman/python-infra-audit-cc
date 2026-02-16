@@ -28,10 +28,11 @@ If `$ARGUMENTS` is empty or "all", audit all applicable areas. Otherwise audit o
 
 ## Phase 1: Detection (1 LLM round)
 
-Run the detection script to discover which infrastructure areas exist, saving the output for verify.sh:
+Run the detection script to discover which infrastructure areas exist, saving the output for verify.sh. Use a path-hashed temp file so parallel runs across repos don't collide:
 
 ```bash
-bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect.json && cat /tmp/infra-detect.json
+DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON" && cat "$DETECT_JSON"
 ```
 
 This outputs JSON with: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
@@ -61,7 +62,7 @@ Launch ALL of the following in a **single message** (parallel tool calls):
 ### 2a. CI Verification (Bash)
 
 ```bash
-bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect.json
+bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON"
 ```
 
 This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection, and outputs JSON with pass/fail per tool, coverage percentage, and version mismatch details.
@@ -143,6 +144,9 @@ For each applicable area, read the relevant config files and compare against the
 - `pytest.status == "timeout"` — tests hanging or too slow for CI
 - `pytest.coverage_pct < 50` (but > 0)
 - `vulture.finding_count > 10` — significant dead code detected (maintainability concern)
+- `vulture_precommit == false` when `vulture` is in `venv_tools` and pre-commit config exists — dead code checks won't run on commit
+- `vulture_config == false` when `vulture` is in `venv_tools` — no `[tool.vulture]` in pyproject.toml (config inconsistency risk; pre-commit hook requires it)
+- `vulture.has_dep == false` when `vulture` is in `venv_tools` — vulture installed in venv but not in pyproject.toml dev dependencies (won't survive `uv sync`)
 
 **INFO** (from verify.sh results):
 - `pytest.coverage_pct < 80` (but >= 50)
@@ -238,11 +242,19 @@ Use these conventions:
 ╚══════════════════════════════════════════════════════════════
 ```
 
-**Score bar** — visual progress bar, 20 chars wide. Fill proportionally to score (e.g. 9.5/10 = 19 filled). Use `█` for filled, `░` for empty:
+**Score bar** — visual progress bar, 20 chars wide. Fill proportionally to score (e.g. 9.5/10.0 = 19 filled). Use `█` for filled, `░` for empty:
 ```
-  Score  [███████████████████░]  9.5 / 10
+  Score  [███████████████████░]  9.5 / 10.0
          Critical: 0  ·  Warnings: 1  ·  Info: 1
 ```
+
+**Color coding** — use bold + color tokens to make the score pop:
+- Score >= 9.0: show score in **green** (`**9.5 / 10.0**` — the agent should render the number prominently)
+- Score 5.0–8.9: show score in **yellow**
+- Score < 5.0: show score in **red**
+- Severity counts: Critical count in **red** (if > 0), Warnings in **yellow** (if > 0), Info stays neutral
+- Section headers (CRITICAL/WARNING/INFO): use `🔴` for CRITICAL, `🟡` for WARNING, `🔵` for INFO before the section name
+- Perfect score (10.0): add `✅` before the score line
 
 **Section headers** — prominent horizontal rules with the section name:
 ```
@@ -362,4 +374,4 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 
 **Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
 
-**Cleanup temp file:** Remove `/tmp/infra-detect.json` after the audit completes.
+**Cleanup temp file:** Remove `$DETECT_JSON` after the audit completes.

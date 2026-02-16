@@ -82,7 +82,7 @@ Read the full history JSON and print a styled report.
 ━━━ INFRA STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Project:     {project-name}
-  Score:       [████████████████████]  10.0 / 10
+  Score:       [████████████████████]  10.0 / 10.0  ✅
 
   Last audit:  {date} ({time delta})
   Last fix:    {date} ({time delta})
@@ -96,7 +96,7 @@ Read the full history JSON and print a styled report.
 ━━━ INFRA STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Project:     {project-name}
-  Score:       [██████████████░░░░░░]  7.0 / 10
+  Score:       [██████████████░░░░░░]  7.0 / 10.0
 
   Last audit:  {date} ({time delta})
   Last fix:    never
@@ -113,6 +113,14 @@ Read the full history JSON and print a styled report.
 ### Score bar
 
 20 chars wide. Fill proportionally: `filled = round(score * 2)`. Use `█` for filled, `░` for empty.
+
+### Color coding
+
+- Score >= 9.0: show score in **green**, add `✅` suffix for 10.0
+- Score 5.0–8.9: show score in **yellow**
+- Score < 5.0: show score in **red**
+- "Clean — no action needed" in **green**
+- "Action needed" in **yellow/red** depending on severity
 
 ### Last fix line
 

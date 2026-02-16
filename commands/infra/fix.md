@@ -30,17 +30,18 @@ The user may optionally limit scope: `$ARGUMENTS`
 
 ## Phase 1: Audit
 
-First, run detection and verification using the same scripts as `infra:audit`:
+First, run detection and verification using the same scripts as `infra:audit`. Use a path-hashed temp file so parallel runs across repos don't collide:
 
 ```bash
-bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect.json
+DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
 ```
 
 **If detect.sh exits non-zero or the output file is empty/missing, stop immediately** with an error message: "Detection failed — cannot proceed with fix." Do not continue to verification or fix phases.
 
 Parse the detection JSON, then run CI verification:
 ```bash
-bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect.json
+bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON"
 ```
 
 Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra:audit`.
@@ -196,10 +197,37 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 .venv/bin/ruff format --check .     # or: uv run ruff format --check .
 ```
 
-**vulture installation** (when dead code check requested but vulture not installed):
+**vulture setup** (full install — when vulture not configured):
 1. Add `vulture>=2.14` to `[project.optional-dependencies] dev` in `pyproject.toml`
 2. Run `uv sync --all-extras` (or `.venv/bin/pip install -e ".[dev]"`) to install
-3. Verify: `.venv/bin/vulture . --min-confidence 80 --exclude ".venv,tests,migrations,node_modules,__pycache__"`
+3. Add `[tool.vulture]` config to `pyproject.toml` with `paths`, `min_confidence = 80`, and `exclude` list
+4. **Framework-specific `ignore_decorators`**: inspect detection JSON `frameworks` field, add only relevant decorators:
+   - Flask: `@app.route`
+   - FastAPI: `@app.get`, `@app.post`, `@app.put`, `@app.delete`, `@router.get`, `@router.post`, `@router.put`, `@router.delete`
+   - Pydantic: `@validator`, `@field_validator`, `@model_validator`, `@computed_field`
+   - Celery: `@celery.task`, `@shared_task`
+   - Click: `@click.command`, `@click.group`
+   - Django: `@receiver`, `@admin.register`
+   - Always add `@pytest.fixture` when tests exist
+5. Add vulture pre-commit hook to `.pre-commit-config.yaml`:
+   ```yaml
+     - repo: https://github.com/jendrikseipp/vulture
+       rev: v2.14  # [ADAPT] match installed vulture version
+       hooks:
+         - id: vulture
+   ```
+6. Optionally bootstrap whitelist: `.venv/bin/vulture --make-whitelist > vulture_whitelist_candidates.py` — offer for review, do NOT auto-commit
+7. Verify: `.venv/bin/vulture` (reads pyproject.toml config)
+
+**vulture pre-commit hook** (standalone — vulture installed but no hook):
+1. Ensure `[tool.vulture]` exists in `pyproject.toml` first (add it if missing — see vulture config recipe)
+2. Append vulture hook to `.pre-commit-config.yaml`
+3. Run `.venv/bin/pre-commit install`
+
+**vulture config** (standalone — vulture installed but no `[tool.vulture]`):
+1. Add `[tool.vulture]` config block to `pyproject.toml` with `paths`, `min_confidence = 80`, and `exclude` list
+2. Add framework-appropriate `ignore_decorators` based on detection JSON `frameworks` field (see list above)
+3. Verify: `.venv/bin/vulture` (should read the new config)
 
 **dead code cleanup** (when vulture findings exist):
 - Do NOT auto-delete — dead code removal requires human judgment
@@ -218,8 +246,8 @@ After all waves complete, re-run the audit logic and print a before/after summar
 ```
 ━━━ RESULTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Before:  5.5 / 10  (2 critical, 3 warnings)
-  After:   9.5 / 10  (0 critical, 1 warning)
+  Before:  5.5 / 10.0  (2 critical, 3 warnings)
+  After:   9.5 / 10.0  (0 critical, 1 warning)
 
   Fixed:
     [x] Added .pre-commit-config.yaml
@@ -230,6 +258,12 @@ After all waves complete, re-run the audit logic and print a before/after summar
   Remaining:
     -- [INFO] ruff line-length is 88 (preference)
 ```
+
+**Color coding:**
+- Before score in **red** or **yellow** (depending on severity)
+- After score in **green** (if improved to >= 9.0), **yellow** (5.0–8.9), or **red** (< 5.0)
+- `[x]` fixed items in **green**
+- Remaining items keep their severity color (red/yellow/neutral)
 
 If any fixes failed or the score didn't improve as expected, list what went wrong and suggest manual steps.
 
