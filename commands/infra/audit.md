@@ -78,6 +78,63 @@ Skip areas that are not detected AND not explicitly requested. If the user reque
 
 ---
 
+## Phase 1b: Local CI Verification
+
+If a `.venv` is detected, actually **run** the detected tools and record pass/fail. This catches the case where config looks correct but the tools themselves fail — meaning CI will reject the code. Each tool run should capture both exit code and stderr summary.
+
+Run these checks sequentially via Bash (they're fast and have no side effects):
+
+**1. Ruff lint** (when ruff detected):
+```bash
+.venv/bin/ruff check . 2>&1; echo "EXIT:$?"
+```
+
+**2. Ruff format** (when ruff detected):
+```bash
+.venv/bin/ruff format --check . 2>&1; echo "EXIT:$?"
+```
+
+**3. Pyright** (when pyright detected):
+```bash
+npx pyright 2>&1; echo "EXIT:$?"
+# OR: .venv/bin/pyright 2>&1; echo "EXIT:$?"
+```
+
+**4. Pre-commit** (when `.pre-commit-config.yaml` detected and pre-commit installed):
+```bash
+.venv/bin/pre-commit run --all-files 2>&1; echo "EXIT:$?"
+```
+
+**5. Test collection** (when tests detected — collection only, no execution):
+```bash
+.venv/bin/pytest --collect-only -q 2>&1; echo "EXIT:$?"
+```
+
+For each tool, record:
+- **pass**: exit code 0
+- **fail**: exit code non-zero — capture the first 10 lines of output as context for the finding
+
+Also check for **version mismatches** that cause silent drift:
+- Compare ruff version in `.venv/bin/ruff --version` against the version pinned in `.pre-commit-config.yaml` (under `repo: https://github.com/astral-sh/ruff-pre-commit`, `rev:` field)
+- Compare ruff version against what CI installs (if CI pins a specific version)
+- If pre-commit is installed, check that hooks are actually registered: run `git config --get core.hooksPath` or check `.git/hooks/pre-commit` exists
+
+### Local CI verification triggers
+
+**CRITICAL:**
+- `ruff check .` fails locally (CI will reject this code)
+- `ruff format --check .` fails locally (CI will reject unformatted code)
+- `pre-commit run --all-files` fails locally (CI runs the same hooks)
+- `pytest --collect-only` fails (test collection broken — CI can't even discover tests)
+
+**WARNING:**
+- Pyright fails locally (type errors CI may catch)
+- ruff version in `.venv` differs from version pinned in `.pre-commit-config.yaml` (silent behavior differences between local dev and hooks)
+- ruff version in `.venv` differs from version used in CI workflow (local passes, CI fails or vice versa)
+- Pre-commit hooks not registered in `.git/hooks/` when `.pre-commit-config.yaml` exists (hooks won't run on commit, issues slip through to CI)
+
+---
+
 ## Phase 2: Audit
 
 ### Parallel execution strategy
