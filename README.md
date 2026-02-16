@@ -24,6 +24,12 @@ In Claude Code:
 /infra:audit           # Audit all detected areas
 /infra:audit ruff      # Audit only ruff config
 /infra:audit ci docker # Audit CI and Docker
+
+/infra:fix             # Fix all critical + warning findings
+/infra:fix critical    # Fix only critical findings
+/infra:fix warnings    # Fix only warnings
+
+/infra:status          # Show last audit/fix score and trend
 ```
 
 ## What it checks
@@ -72,12 +78,20 @@ npx python-infra-audit-cc --global --uninstall
 
 The installer copies skill files into your `~/.claude/` directory:
 
-- `commands/infra/audit.md` — The slash command prompt
+- `commands/infra/audit.md` — Audit slash command
+- `commands/infra/fix.md` — Auto-fix slash command
+- `commands/infra/status.md` — Status dashboard slash command
 - `commands/infra/update.md` — Self-update command
 - `infra/blueprint.md` — The standards reference document
+- `infra/blueprints/ci.yml` — Canonical CI workflow template
+- `infra/blueprints/renovate.yml` — Canonical Renovate config template
+- `infra/scripts/detect.sh` — Project detection script (frameworks, tools, config files)
+- `infra/scripts/verify.sh` — CI/CD verification script
 - `hooks/infra-check-update.js` — Background update checker (runs on session start)
 
 It additively merges its hook into `settings.json` alongside any existing hooks (e.g., GSD).
+
+Audit history is stored per-project in `~/.claude/infra/history/` and persists across updates and uninstalls.
 
 ## Local modifications
 
