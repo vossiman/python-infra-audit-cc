@@ -40,6 +40,7 @@ In Claude Code:
 | **Makefile** | Standard targets (help, test, deploy, etc.) |
 | **Alembic** | sqlalchemy.url blank, model imports, env var usage |
 | **env** | .env in gitignore, example.env exists, no committed secrets |
+| **deadcode** | Unused functions, variables, imports, classes via vulture |
 
 ## Output
 

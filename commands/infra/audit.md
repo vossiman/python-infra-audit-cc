@@ -7,7 +7,7 @@ allowed-tools:
   - Grep
   - Bash
   - Task
-argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|claude-md|all)"
+argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|deadcode|claude-md|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
@@ -49,6 +49,8 @@ Print a styled detection summary using checkmarks and crosses. Split across two 
 Use `[x]` for detected and `[ ]` for not found.
 
 Skip areas that are not detected AND not explicitly requested. If the user requests a specific area that isn't detected, report it as a CRITICAL finding (missing entirely).
+
+If the user requests `deadcode` and vulture is not in `venv_tools`, report an INFO finding suggesting installation rather than a CRITICAL "missing" finding.
 
 ---
 
@@ -140,9 +142,12 @@ For each applicable area, read the relevant config files and compare against the
 - `hooks_registered == false` when pre-commit config exists — hooks won't run on commit
 - `pytest.status == "timeout"` — tests hanging or too slow for CI
 - `pytest.coverage_pct < 50` (but > 0)
+- `vulture.finding_count > 10` — significant dead code detected (maintainability concern)
 
 **INFO** (from verify.sh results):
 - `pytest.coverage_pct < 80` (but >= 50)
+- `vulture.finding_count > 0` AND `vulture.finding_count <= 10` — minor dead code detected
+- `vulture.status == "skip"` when Python source files exist — vulture not installed (consider adding for dead code detection)
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)

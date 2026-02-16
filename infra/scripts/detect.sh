@@ -66,13 +66,14 @@ done
 
 # ── Venv tool versions ───────────────────────────────────
 
-PYTHON_VERSION="" RUFF_VERSION="" PYTEST_VERSION="" PRECOMMIT_VERSION="" PYRIGHT_VERSION=""
+PYTHON_VERSION="" RUFF_VERSION="" PYTEST_VERSION="" PRECOMMIT_VERSION="" PYRIGHT_VERSION="" VULTURE_VERSION=""
 if [ "$HAS_VENV" = true ]; then
   PYTHON_VERSION=$(.venv/bin/python --version 2>/dev/null | awk '{print $2}') || true
   RUFF_VERSION=$(.venv/bin/ruff --version 2>/dev/null | awk '{print $2}') || true
   PYTEST_VERSION=$(.venv/bin/pytest --version 2>/dev/null | awk '{print $2}') || true
   PRECOMMIT_VERSION=$(.venv/bin/pre-commit --version 2>/dev/null | awk '{print $NF}') || true
   PYRIGHT_VERSION=$(.venv/bin/pyright --version 2>/dev/null | awk '{print $NF}') || true
+  VULTURE_VERSION=$(.venv/bin/vulture --version 2>/dev/null | awk '{print $2}') || true
   if [ -z "$PYRIGHT_VERSION" ] && [ -x node_modules/.bin/pyright ]; then
     PYRIGHT_VERSION=$(node_modules/.bin/pyright --version 2>/dev/null | awk '{print $NF}') || true
   fi
@@ -83,7 +84,7 @@ fi
 export HAS_GIT HAS_PYPROJECT HAS_RUFF_TOML HAS_PYRIGHT HAS_PRECOMMIT HAS_MAKEFILE
 export HAS_ALEMBIC HAS_VENV HAS_GITIGNORE HAS_DOCKER HAS_UV HAS_RENOVATE HAS_TESTS
 export CI_FILES ENV_FILES
-export PYTHON_VERSION RUFF_VERSION PYTEST_VERSION PRECOMMIT_VERSION PYRIGHT_VERSION
+export PYTHON_VERSION RUFF_VERSION PYTEST_VERSION PRECOMMIT_VERSION PYRIGHT_VERSION VULTURE_VERSION
 
 exec python3 -c '
 import json, os, sys, glob as G
@@ -239,6 +240,7 @@ result = {
         "pytest": ver("PYTEST_VERSION"),
         "pre_commit": ver("PRECOMMIT_VERSION"),
         "pyright": ver("PYRIGHT_VERSION"),
+        "vulture": ver("VULTURE_VERSION"),
     },
     "requires_python": requires_python,
     "project_name": project_name,

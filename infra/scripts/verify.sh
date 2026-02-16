@@ -35,6 +35,7 @@ print(f'RUFF_IN_VENV={\"true\" if vt.get(\"ruff\") else \"false\"}')
 print(f'PYTEST_IN_VENV={\"true\" if vt.get(\"pytest\") else \"false\"}')
 print(f'PRECOMMIT_IN_VENV={\"true\" if vt.get(\"pre_commit\") else \"false\"}')
 print(f'PYRIGHT_IN_VENV={\"true\" if vt.get(\"pyright\") else \"false\"}')
+print(f'VULTURE_IN_VENV={\"true\" if vt.get(\"vulture\") else \"false\"}')
 print(f'LOCAL_RUFF_VER={vt.get(\"ruff\") or \"\"}')
 print(f'HAS_PYTEST_COV={\"true\" if t.get(\"has_pytest_cov\") else \"false\"}')
 print(f'COV_IN_ADDOPTS={\"true\" if t.get(\"cov_in_addopts\") else \"false\"}')
@@ -111,6 +112,13 @@ fi
 
 if [ "$HAS_PRECOMMIT" = true ] && [ "$PRECOMMIT_IN_VENV" = true ]; then
   run_tool pre_commit .venv/bin/pre-commit run --all-files &
+fi
+
+# Vulture dead code detection
+if [ "$VULTURE_IN_VENV" = true ]; then
+  VULTURE_ARGS=". --min-confidence 80 --exclude .venv,tests,migrations,node_modules,__pycache__"
+  [ -f vulture_whitelist.py ] && VULTURE_ARGS="$VULTURE_ARGS vulture_whitelist.py"
+  run_tool vulture .venv/bin/vulture $VULTURE_ARGS &
 fi
 
 # Group 2: Tests (collect-only → full run, sequential pair but parallel with group 1)
@@ -227,6 +235,7 @@ pyright = tool_result('pyright')
 pre_commit = tool_result('pre_commit')
 test_collect = tool_result('test_collect')
 pytest_res = tool_result('pytest')
+vulture = tool_result('vulture')
 
 # Extract coverage percentage from pytest output
 coverage_pct = None
@@ -243,6 +252,11 @@ if pytest_res['output']:
                     break
             break
 pytest_res['coverage_pct'] = coverage_pct
+
+vulture_count = 0
+if vulture['output'] and vulture['status'] != 'skip':
+    vulture_count = len([l for l in vulture['output'].strip().split('\n') if l.strip()])
+vulture['finding_count'] = vulture_count
 
 # Version mismatches
 precommit_ruff = read_file('precommit_ruff_ver') or None
@@ -295,6 +309,7 @@ result = {
     'test_collect': test_collect,
     'pytest': pytest_res,
     'version_mismatches': version_mismatches,
+    'vulture': vulture,
     'hooks_registered': hooks_reg,
 }
 print(json.dumps(result, indent=2))

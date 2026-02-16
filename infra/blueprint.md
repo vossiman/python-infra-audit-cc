@@ -413,3 +413,33 @@ __pycache__/
 - `.env` must NOT be tracked by git (`git ls-files .env` returns empty)
 - `example.env` should exist if `.env` is in `.gitignore`
 - No actual API keys or passwords in any tracked file
+
+---
+
+## 11. Dead Code Detection (Vulture)
+
+**Tool:** [vulture](https://github.com/jendrikseipp/vulture)
+
+### Recommended setup
+
+```toml
+[project.optional-dependencies]
+dev = [
+    "vulture>=2.14",     # [ADAPT] use latest stable
+]
+```
+
+### Recommended invocation
+
+```bash
+vulture . --min-confidence 80 --exclude ".venv,tests,migrations,node_modules,__pycache__"
+```
+
+### Key points
+- **`--min-confidence 80`**: Filters low-confidence false positives from framework magic (Flask routes, pytest fixtures, Pydantic validators). Raise to 90 for fewer results, lower to 60 for stricter checking.
+- **Exclude tests**: Tests reference code that appears "unused" from static analysis perspective
+- **Exclude migrations**: Auto-generated Alembic files contain framework-invoked code
+- **Whitelist file**: For persistent false positives, create `vulture_whitelist.py` and pass it as an argument
+
+### Minimum acceptable
+Optional quality check. 0-10 findings is good. >10 findings warrants review.

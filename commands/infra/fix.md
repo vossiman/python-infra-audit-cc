@@ -196,6 +196,17 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 .venv/bin/ruff format --check .     # or: uv run ruff format --check .
 ```
 
+**vulture installation** (when dead code check requested but vulture not installed):
+1. Add `vulture>=2.14` to `[project.optional-dependencies] dev` in `pyproject.toml`
+2. Run `uv sync --all-extras` (or `.venv/bin/pip install -e ".[dev]"`) to install
+3. Verify: `.venv/bin/vulture . --min-confidence 80 --exclude ".venv,tests,migrations,node_modules,__pycache__"`
+
+**dead code cleanup** (when vulture findings exist):
+- Do NOT auto-delete — dead code removal requires human judgment
+- List findings for user review
+- Common safe removals: unused imports (already caught by ruff F401), unused local variables
+- Caution: unused functions/classes may be invoked dynamically or via external entry points
+
 For all other areas (ruff, pyright, CI, renovate, etc.), create/update the config file using the blueprint as reference.
 
 ---
