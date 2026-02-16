@@ -49,7 +49,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | alembic | `alembic.ini` |
 | renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
 | venv | `.venv/bin/python` exists and is executable |
-| env | `.env` pattern (check `.gitignore` for `.env`, look for `example.env`) |
+| env | Config pattern — detect which config mechanism the project uses. Check for `.env`, `config.json`, `config.yaml`, `config.toml`, `settings.json`, `settings.yaml`, `.env.*` variants. Then check `.gitignore` for matching patterns and look for a corresponding example/template file (e.g. `example.env`, `config.example.json`, `config.json.example`). |
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
 ```
@@ -122,7 +122,7 @@ For each applicable area, read the relevant config files and compare against the
 | **INFO** | Nice-to-haves, cosmetic differences, legitimate alternative approaches | No impact |
 
 ### CRITICAL triggers (always flag these)
-- `.env` file tracked by git (run: `git ls-files .env` — must return empty)
+- Config file containing secrets tracked by git (run: `git ls-files .env config.json config.yaml settings.json` etc. — must return empty for any file that is gitignored or known to hold secrets)
 - No linting tool configured at all (no ruff, no flake8, nothing)
 - No `.pre-commit-config.yaml` when ruff exists (linting without pre-commit = CI failures)
 - No CI workflow files at all
@@ -145,7 +145,7 @@ For each applicable area, read the relevant config files and compare against the
 - Docker using `pip install` instead of lockfile-based install
 - Makefile missing `help` target
 - Alembic `env.py` missing model imports for autogenerate
-- No `example.env` when `.env` is gitignored
+- No example/template for the project's config file (e.g. no `example.env` when `.env` is gitignored, no `config.example.json` or `config.json.example` when `config.json` is gitignored). Only flag this for whichever config mechanism the project actually uses — don't require `example.env` if the project uses `config.json` instead
 - `.venv` exists but `ruff` not installed (when ruff config is present)
 - `.venv` exists but `pytest` not installed (when test files exist)
 - `.venv` exists but `pre-commit` not installed (when `.pre-commit-config.yaml` exists)
