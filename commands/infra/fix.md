@@ -33,12 +33,14 @@ The user may optionally limit scope: `$ARGUMENTS`
 First, run detection and verification using the same scripts as `infra:audit`:
 
 ```bash
-bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect-$$.json
+bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect.json
 ```
+
+**If detect.sh exits non-zero or the output file is empty/missing, stop immediately** with an error message: "Detection failed — cannot proceed with fix." Do not continue to verification or fix phases.
 
 Parse the detection JSON, then run CI verification:
 ```bash
-bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect-$$.json
+bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect.json
 ```
 
 Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra:audit`.

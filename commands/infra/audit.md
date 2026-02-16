@@ -28,18 +28,15 @@ If `$ARGUMENTS` is empty or "all", audit all applicable areas. Otherwise audit o
 
 ## Phase 1: Detection (1 LLM round)
 
-Run the detection script to discover which infrastructure areas exist:
+Run the detection script to discover which infrastructure areas exist, saving the output for verify.sh:
 
 ```bash
-bash ~/.claude/infra/scripts/detect.sh
+bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect.json && cat /tmp/infra-detect.json
 ```
 
 This outputs JSON with: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
 
-Parse the JSON output. Save it to a temp file for verify.sh:
-```bash
-bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect-$$.json
-```
+Parse the JSON output.
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
 ```
@@ -62,7 +59,7 @@ Launch ALL of the following in a **single message** (parallel tool calls):
 ### 2a. CI Verification (Bash)
 
 ```bash
-bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect-$$.json
+bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect.json
 ```
 
 This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection, and outputs JSON with pass/fail per tool, coverage percentage, and version mismatch details.
@@ -360,4 +357,4 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 
 **Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
 
-**Cleanup temp file:** Remove `/tmp/infra-detect-$$.json` after the audit completes.
+**Cleanup temp file:** Remove `/tmp/infra-detect.json` after the audit completes.
