@@ -156,6 +156,8 @@ const OUR_FILES = [
   'infra/blueprint.md',
   'infra/blueprints/ci.yml',
   'infra/blueprints/renovate.yml',
+  'infra/scripts/detect.sh',
+  'infra/scripts/verify.sh',
   'infra/VERSION',
   'hooks/infra-check-update.js',
   MANIFEST_NAME,
@@ -331,7 +333,25 @@ function install(isGlobal) {
     failures.push('infra/blueprint.md');
   }
 
-  // ── 7. infra/VERSION ──
+  // ── 7. infra/scripts/*.sh ──
+  const scriptsDir = path.join(src, 'infra', 'scripts');
+  const scriptsDest = path.join(configDir, 'infra', 'scripts');
+  fs.mkdirSync(scriptsDest, { recursive: true });
+  for (const scriptName of ['detect.sh', 'verify.sh']) {
+    const scriptSrc = path.join(scriptsDir, scriptName);
+    const scriptOut = path.join(scriptsDest, scriptName);
+    let scriptContent = fs.readFileSync(scriptSrc, 'utf8');
+    scriptContent = scriptContent.replace(/~\/\.claude\//g, pathPrefix);
+    fs.writeFileSync(scriptOut, scriptContent);
+    fs.chmodSync(scriptOut, 0o755);
+    if (fs.existsSync(scriptOut)) {
+      console.log(`  ${green}✓${reset} Installed infra/scripts/${scriptName}`);
+    } else {
+      failures.push(`infra/scripts/${scriptName}`);
+    }
+  }
+
+  // ── 8. infra/VERSION ──
   const versionDest = path.join(configDir, 'infra', 'VERSION');
   fs.writeFileSync(versionDest, pkg.version);
   if (fs.existsSync(versionDest)) {
@@ -340,7 +360,7 @@ function install(isGlobal) {
     failures.push('infra/VERSION');
   }
 
-  // ── 8. hooks/infra-check-update.js ──
+  // ── 9. hooks/infra-check-update.js ──
   const hookSrc = path.join(src, 'hooks', 'infra-check-update.js');
   const hookDest = path.join(configDir, 'hooks', 'infra-check-update.js');
   fs.mkdirSync(path.dirname(hookDest), { recursive: true });
@@ -357,7 +377,7 @@ function install(isGlobal) {
     process.exit(1);
   }
 
-  // ── 9. Settings.json — additive hook merge ──
+  // ── 10. Settings.json — additive hook merge ──
   const settingsPath = path.join(configDir, 'settings.json');
   const settings = readSettings(settingsPath);
 
@@ -394,7 +414,7 @@ function install(isGlobal) {
 
   writeSettings(settingsPath, settings);
 
-  // ── 10. Write manifest ──
+  // ── 11. Write manifest ──
   const manifest = {
     version: pkg.version,
     timestamp: new Date().toISOString(),
@@ -410,6 +430,8 @@ function install(isGlobal) {
     { rel: 'infra/blueprint.md', abs: blueprintDest },
     { rel: 'infra/blueprints/ci.yml', abs: path.join(blueprintsDest, 'ci.yml') },
     { rel: 'infra/blueprints/renovate.yml', abs: path.join(blueprintsDest, 'renovate.yml') },
+    { rel: 'infra/scripts/detect.sh', abs: path.join(scriptsDest, 'detect.sh') },
+    { rel: 'infra/scripts/verify.sh', abs: path.join(scriptsDest, 'verify.sh') },
     { rel: 'infra/VERSION', abs: versionDest },
     { rel: 'hooks/infra-check-update.js', abs: hookDest },
   ];
@@ -466,6 +488,8 @@ function uninstall(isGlobal) {
     'infra/blueprint.md',
     'infra/blueprints/ci.yml',
     'infra/blueprints/renovate.yml',
+    'infra/scripts/detect.sh',
+    'infra/scripts/verify.sh',
     'infra/VERSION',
     'hooks/infra-check-update.js',
     MANIFEST_NAME,
@@ -483,6 +507,7 @@ function uninstall(isGlobal) {
   // Clean up empty directories (only if we emptied them)
   const dirsToCheck = [
     path.join(configDir, 'infra', 'blueprints'),
+    path.join(configDir, 'infra', 'scripts'),
     path.join(configDir, 'infra'),
     path.join(configDir, 'commands', 'infra'),
   ];

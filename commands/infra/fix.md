@@ -30,7 +30,18 @@ The user may optionally limit scope: `$ARGUMENTS`
 
 ## Phase 1: Audit
 
-First, run the audit to get the current findings. Execute the audit yourself following the same detection and audit logic as `infra:audit` — scan the project, compare against the blueprint, and collect all findings with their severity, area, and fix instructions.
+First, run detection and verification using the same scripts as `infra:audit`:
+
+```bash
+bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect-$$.json
+```
+
+Parse the detection JSON, then run CI verification:
+```bash
+bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect-$$.json
+```
+
+Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra:audit`.
 
 Do NOT output the full audit report. Instead, collect the findings into a structured list you'll use in Phase 2.
 

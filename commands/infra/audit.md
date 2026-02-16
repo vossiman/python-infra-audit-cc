@@ -22,29 +22,24 @@ The user may optionally specify an area to audit: `$ARGUMENTS`
 
 If `$ARGUMENTS` is empty or "all", audit all applicable areas. Otherwise audit only the specified area(s).
 
+**Working tree protection:** verify.sh handles git stash/restore to ensure tools like `pre-commit run --all-files` don't leave modifications. Do NOT run pre-commit or other auto-fixing tools directly via Bash — always use verify.sh.
+
 ---
 
-## Phase 1: Detection
+## Phase 1: Detection (1 LLM round)
 
-Scan the project root for key files to determine which infrastructure areas exist. Use Glob to check for:
+Run the detection script to discover which infrastructure areas exist:
 
-| Area | Detection files |
-|------|----------------|
-| git | `.git/` directory exists |
-| ruff | `pyproject.toml` containing `[tool.ruff]`, or `ruff.toml` |
-| pyright | `pyrightconfig.json` |
-| pre-commit | `.pre-commit-config.yaml` |
-| ci | `.github/workflows/*.yml` or `.gitlab-ci.yml` or `.circleci/config.yml` |
-| pyproject | `pyproject.toml` |
-| uv | `uv.lock` in root or subdirectories |
-| docker | `Dockerfile*` or `compose.yml` or `docker-compose.yml` |
-| makefile | `Makefile` |
-| alembic | `alembic.ini` |
-| renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
-| venv | `.venv/bin/python` exists and is executable |
-| env | Config pattern — detect which config mechanism the project uses. Check for `.env`, `config.json`, `config.yaml`, `config.toml`, `settings.json`, `settings.yaml`, `.env.*` variants. Then check `.gitignore` for matching patterns and look for a corresponding example/template file (e.g. `example.env`, `config.example.json`, `config.json.example`). |
-| tests | `tests/` directory, or `test_*.py` / `*_test.py` files anywhere in the project. Also check for coverage config: `pytest-cov` in `pyproject.toml` dependencies, `[tool.coverage]` or `[tool.pytest.ini_options]` with `--cov` in `pyproject.toml`, or `.coveragerc`. Also check for inline-snapshot testing: `inline-snapshot` in `pyproject.toml` dependencies, `dirty-equals` as companion library, and whether `pydantic` is a project dependency (indicates data models that benefit from snapshot testing). Grep test files for `from inline_snapshot import snapshot` to detect actual usage. |
-| claude-md | `CLAUDE.md` in project root, `.claude/CLAUDE.md`, or `CLAUDE.md` files in subdirectories |
+```bash
+bash ~/.claude/infra/scripts/detect.sh
+```
+
+This outputs JSON with: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
+
+Parse the JSON output. Save it to a temp file for verify.sh:
+```bash
+bash ~/.claude/infra/scripts/detect.sh > /tmp/infra-detect-$$.json
+```
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
 ```
@@ -56,142 +51,59 @@ Print a styled detection summary using checkmarks and crosses. Split across two 
 ```
 Use `[x]` for detected and `[ ]` for not found.
 
-**venv probing** — when a `.venv` is detected, use Bash to inventory installed dev tools. Run each command and record the version or "missing":
-```bash
-.venv/bin/python --version
-.venv/bin/ruff --version
-.venv/bin/pytest --version
-.venv/bin/pre-commit --version
-```
-For pyright, check `npx pyright --version` (node-based) OR `.venv/bin/pyright --version` (pip-based) — either is acceptable.
-
-Also verify the venv's Python version matches `requires-python` from `pyproject.toml`.
-
 Skip areas that are not detected AND not explicitly requested. If the user requests a specific area that isn't detected, report it as a CRITICAL finding (missing entirely).
 
 ---
 
-## Phase 1b: Local CI Verification
+## Phase 2: Parallel Audit + Verification (1 LLM round)
 
-If a `.venv` is detected, actually **run** the detected tools and record pass/fail. This catches the case where config looks correct but the tools themselves fail — meaning CI will reject the code. Each tool run should capture both exit code and stderr summary.
+Launch ALL of the following in a **single message** (parallel tool calls):
 
-Run these checks sequentially via Bash (they're fast and have no side effects):
+### 2a. CI Verification (Bash)
 
-**1. Ruff lint** (when ruff detected):
 ```bash
-.venv/bin/ruff check . 2>&1; echo "EXIT:$?"
+bash ~/.claude/infra/scripts/verify.sh /tmp/infra-detect-$$.json
 ```
 
-**2. Ruff format** (when ruff detected):
-```bash
-.venv/bin/ruff format --check . 2>&1; echo "EXIT:$?"
-```
+This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection, and outputs JSON with pass/fail per tool, coverage percentage, and version mismatch details.
 
-**3. Pyright** (when pyright detected):
-```bash
-npx pyright 2>&1; echo "EXIT:$?"
-# OR: .venv/bin/pyright 2>&1; echo "EXIT:$?"
-```
+### 2b. Area Audit Agents (Task — one per detected area)
 
-**4. Pre-commit** (when `.pre-commit-config.yaml` detected and pre-commit installed):
-```bash
-.venv/bin/pre-commit run --all-files 2>&1; echo "EXIT:$?"
-```
+Spawn one `Explore` sub-agent per detected area via the `Task` tool. Launch all in the same message as verify.sh.
 
-**5. Test collection** (when tests detected — collection only, no execution):
-```bash
-.venv/bin/pytest --collect-only -q 2>&1; echo "EXIT:$?"
-```
-
-**6. Test execution & coverage** (when tests detected AND step 5 passed — skip if collection failed):
-
-First, determine coverage capability:
-```bash
-# Check if pytest-cov is installed
-.venv/bin/python -c "import pytest_cov" 2>/dev/null; echo "EXIT:$?"
-```
-
-Then check if `--cov` is already configured in `[tool.pytest.ini_options] addopts` (to avoid double-adding it):
-```bash
-.venv/bin/python -c "
-import sys
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
-with open('pyproject.toml', 'rb') as f:
-    d = tomllib.load(f)
-addopts = d.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('addopts', '')
-print('COV_IN_ADDOPTS' if '--cov' in addopts else 'NO_COV_IN_ADDOPTS')
-" 2>/dev/null || echo "NO_COV_IN_ADDOPTS"
-```
-
-Run the appropriate command based on what's available:
-- `--cov` already in addopts → `timeout 120 .venv/bin/pytest -q --tb=no 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"`
-- pytest-cov installed but NOT in addopts → `timeout 120 .venv/bin/pytest -q --tb=no --cov 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"`
-- No pytest-cov → `timeout 120 .venv/bin/pytest -q --tb=no 2>&1 | tail -20; echo "EXIT:${PIPESTATUS[0]}"` (pass/fail only, no coverage)
-
-Parse the results:
-- Exit code from the `EXIT:` line — `0` = pass, `124` = timeout, anything else = test failure
-- If coverage was collected, look for the `TOTAL` line in the output (e.g. `TOTAL  1234  567  54%`) and extract the percentage value
-
-For each tool, record:
-- **pass**: exit code 0
-- **fail**: exit code non-zero — capture the first 10 lines of output as context for the finding
-
-Also check for **version mismatches** that cause silent drift:
-- Compare ruff version in `.venv/bin/ruff --version` against the version pinned in `.pre-commit-config.yaml` (under `repo: https://github.com/astral-sh/ruff-pre-commit`, `rev:` field)
-- Compare ruff version against what CI installs (if CI pins a specific version)
-- If pre-commit is installed, check that hooks are actually registered: run `git config --get core.hooksPath` or check `.git/hooks/pre-commit` exists
-
-### Local CI verification triggers
-
-**CRITICAL:**
-- `ruff check .` fails locally (CI will reject this code)
-- `ruff format --check .` fails locally (CI will reject unformatted code)
-- `pre-commit run --all-files` fails locally (CI runs the same hooks)
-- `pytest --collect-only` fails (test collection broken — CI can't even discover tests)
-- `pytest` fails (tests exit non-zero) — CI will reject failing tests
-- Actual coverage is 0% — tests exist but cover nothing
-
-**WARNING:**
-- Pyright fails locally (type errors CI may catch)
-- ruff version in `.venv` differs from version pinned in `.pre-commit-config.yaml` (silent behavior differences between local dev and hooks)
-- ruff version in `.venv` differs from version used in CI workflow (local passes, CI fails or vice versa)
-- Pre-commit hooks not registered in `.git/hooks/` when `.pre-commit-config.yaml` exists (hooks won't run on commit, issues slip through to CI)
-- `pytest` times out after 120s (tests hanging or too slow for CI)
-- Actual coverage below 50%
-
-**INFO:**
-- Actual coverage below 80% (but above 50%)
-
----
-
-## Phase 2: Audit
-
-### Parallel execution strategy
-
-After detection, you know which areas to audit. Each area's audit is independent — they read different config files and check different things. Parallelize them:
-
-**If 2+ areas to audit → use parallel sub-agents:**
-
-1. Spawn one `Explore` sub-agent per area via the `Task` tool (no team)
-2. Launch all sub-agents in a single message (parallel tool calls)
-3. Each returns findings as: `severity | area | short description | current | expected | fix`
-4. Collect all findings, proceed to Phase 3
-
-**If only 1 area → audit it directly.** No agents needed.
+**If only 1 area to audit → audit it directly.** No agents needed.
 
 **Sub-agent prompt template** — every sub-agent must receive:
 - The area it's responsible for
-- The detection context (which files were found, venv tool versions if relevant)
+- The detection context JSON (which files were found, venv tool versions if relevant)
 - The project's `requires-python` value (if found)
 - The full list of triggers below relevant to its area
 - The blueprint standards for its area
 - Instruction to return findings as: `severity | area | description | current | expected | fix`
 - Instruction that this is READ-ONLY — no file modifications
 
-### Audit criteria
+### 2c. CLAUDE.md Agents (Task — when claude-md detected)
+
+Spawn two `Explore` sub-agents in the same parallel message:
+
+1. **Extractor + Verifier** (merged into one agent) — Reads all CLAUDE.md files, extracts claims (commands, file refs, tool refs, workflow refs, package refs), then verifies each claim against the actual project:
+   - For commands: check make targets exist in Makefile, scripts exist on disk, referenced binaries in `.venv/bin/`
+   - For file references: confirm each path exists
+   - For tool references: cross-check against detection results and venv probe
+   - For package references: check against `pyproject.toml` dependencies
+   - Returns: list of stale/broken references with `claim | type | status (valid/stale/broken) | details`
+
+2. **Coverage checker** — Receives detection results, reads CLAUDE.md, finds gaps:
+   - For each detected infra area, check if CLAUDE.md mentions it
+   - Flag detected areas with zero CLAUDE.md coverage
+   - Flag undocumented developer workflows (test, lint, setup)
+   - Returns: list of coverage gaps with `area | covered (yes/no) | details`
+
+**Skip CLAUDE.md agents** if `claude-md` was not detected AND not explicitly requested.
+
+---
+
+## Audit Criteria
 
 For each applicable area, read the relevant config files and compare against the blueprint standards. Classify each finding:
 
@@ -212,7 +124,28 @@ For each applicable area, read the relevant config files and compare against the
 - Actual secrets (API keys matching `sk-`, `key-`, long hex strings) in tracked files
 - No `.venv` when Python source files exist (tools can't run without an environment)
 - Not a git repo (no `.git/` directory) — version control is a prerequisite for everything else
-- No test files at all (`tests/`, `test_*.py`, `*_test.py`) when Python source files exist — this is CRITICAL even if `pyproject.toml` configures testpaths or CI runs pytest, because that means CI is running against nothing
+- No test files at all (`tests/`, `test_*.py`, `*_test.py`) when Python source files exist — CRITICAL even if `pyproject.toml` configures testpaths or CI runs pytest, because that means CI is running against nothing
+
+### Verification triggers (mapped from verify.sh JSON)
+
+**CRITICAL** (from verify.sh results):
+- `ruff_check.status == "fail"` — ruff check fails locally (CI will reject)
+- `ruff_format.status == "fail"` — ruff format fails locally (CI will reject)
+- `pre_commit.status == "fail"` — pre-commit fails locally (CI runs the same hooks)
+- `test_collect.status == "fail"` — test collection broken (CI can't discover tests)
+- `pytest.status == "fail"` — tests fail (CI will reject)
+- `pytest.coverage_pct == 0` — tests exist but cover nothing
+
+**WARNING** (from verify.sh results):
+- `pyright.status == "fail"` — pyright fails locally (type errors CI may catch)
+- `version_mismatches` contains `venv_vs_precommit` — ruff version drift between local dev and hooks
+- `version_mismatches` contains `venv_vs_ci` — ruff/python version drift between local and CI
+- `hooks_registered == false` when pre-commit config exists — hooks won't run on commit
+- `pytest.status == "timeout"` — tests hanging or too slow for CI
+- `pytest.coverage_pct < 50` (but > 0)
+
+**INFO** (from verify.sh results):
+- `pytest.coverage_pct < 80` (but >= 50)
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)
@@ -227,7 +160,7 @@ For each applicable area, read the relevant config files and compare against the
 - Docker using `pip install` instead of lockfile-based install
 - Makefile missing `help` target
 - Alembic `env.py` missing model imports for autogenerate
-- No example/template for the project's config file (e.g. no `example.env` when `.env` is gitignored, no `config.example.json` or `config.json.example` when `config.json` is gitignored). Only flag this for whichever config mechanism the project actually uses — don't require `example.env` if the project uses `config.json` instead
+- No example/template for the project's config file (e.g. no `example.env` when `.env` is gitignored, no `config.example.json` or `config.json.example` when `config.json` is gitignored). Only flag this for whichever config mechanism the project actually uses
 - `.venv` exists but `ruff` not installed (when ruff config is present)
 - `.venv` exists but `pytest` not installed (when test files exist)
 - `.venv` exists but `pre-commit` not installed (when `.pre-commit-config.yaml` exists)
@@ -237,10 +170,10 @@ For each applicable area, read the relevant config files and compare against the
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
-- Tests exist and `pydantic` is a project dependency but `inline-snapshot` not in dev dependencies — snapshot testing auto-generates and updates assertion data for Pydantic models, catching field drift without manual test maintenance
-- `inline-snapshot` is in dev dependencies but no test files contain `from inline_snapshot import snapshot` — dependency installed but not used
-- CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence — code may use features unavailable in CI's older Python)
-- Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the blueprint (e.g., `actions/checkout@v4` when blueprint has `@v6` — missed security patches)
+- Tests exist and `pydantic` is a project dependency but `inline-snapshot` not in dev dependencies
+- `inline-snapshot` is in dev dependencies but no test files contain `from inline_snapshot import snapshot`
+- CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence)
+- Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the blueprint
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
@@ -253,69 +186,32 @@ For each applicable area, read the relevant config files and compare against the
 - Configured `fail_under` threshold is below 80% (may be intentional for early-stage projects)
 - Tests exist but no `conftest.py` (may not need shared fixtures)
 - Low test-to-source ratio — count `test_*.py`/`*_test.py` files vs `*.py` source files (excluding `__init__.py`, `conftest.py`); flag if ratio is below 0.5
-- Tests exist but `inline-snapshot` not in dev dependencies and project doesn't use Pydantic — snapshot testing is still useful for asserting complex data structures but less critical without data models
-- `inline-snapshot` used but `dirty-equals` not in dev dependencies — `dirty-equals` enables flexible matching for dynamic values (timestamps, auto-generated IDs) within snapshots via patterns like `IsInt()`, `IsNow()`, `IsUUID()`
-
----
-
-## Phase 2b: CLAUDE.md Audit
-
-This audit is cross-cutting — it validates that the project's CLAUDE.md accurately reflects the actual infrastructure. It runs after Phase 2 completes, because it needs both the detection results AND the infra audit findings as context.
-
-**Skip this phase** if `claude-md` was not detected AND not explicitly requested. If the user requested only a specific non-claude-md area, also skip.
-
-### Agents
-
-1. **Extractor** (`Explore` agent) — Reads all CLAUDE.md files found in the project. Extracts and categorizes every claim:
-   - **Commands**: shell commands, make targets, script invocations (e.g., `make lint`, `uv run pytest`, `./scripts/deploy.sh`)
-   - **File references**: paths mentioned as important (e.g., "edit `.env`", "see `config.yaml`")
-   - **Tool references**: dev tools mentioned (e.g., ruff, pyright, pytest, pre-commit, docker, alembic)
-   - **Workflow references**: CI/CD, deployment, or automation mentions
-   - **Package references**: Python packages mentioned by name
-   - Returns a structured list of all extracted claims by category
-
-2. **Verifier** (`Explore` agent) — Receives the extractor's claims and checks each against the actual project:
-   - For commands: check that make targets exist in Makefile, scripts exist on disk, referenced binaries are in `.venv/bin/`
-   - For file references: Glob to confirm each path exists
-   - For tool references: cross-check against the Phase 1 detection results and venv probe
-   - For package references: check against `pyproject.toml` dependencies
-   - Returns: list of stale/broken references with `claim | type | status (valid/stale/broken) | details`
-
-3. **Coverage checker** (`Explore` agent) — Receives the Phase 1 detection results and reads CLAUDE.md to find gaps:
-   - For each detected infra area, check if CLAUDE.md mentions it or gives relevant guidance
-   - Flag detected areas with zero CLAUDE.md coverage (e.g., project has Alembic but CLAUDE.md never mentions migrations)
-   - Flag if common developer workflows are undocumented (how to run tests, how to lint, how to set up the project)
-   - Returns: list of coverage gaps with `area | covered (yes/no) | details`
-
-### Execution strategy
-
-1. Spawn **Extractor** as an `Explore` sub-agent via the `Task` tool — wait for it to return
-2. Once Extractor returns its claims, spawn **Verifier** and **Coverage checker** as `Explore` sub-agents in a single message (parallel `Task` calls) — pass the Extractor's claims to Verifier in its prompt, pass detection results to Coverage checker
-3. Collect all findings, merge into the main report alongside Phase 2 results
+- Tests exist but `inline-snapshot` not in dev dependencies and project doesn't use Pydantic
+- `inline-snapshot` used but `dirty-equals` not in dev dependencies
 
 ### CLAUDE.md audit triggers
 
-**WARNING triggers:**
+**WARNING:**
 - CLAUDE.md references make targets that don't exist in the Makefile
 - CLAUDE.md references commands or scripts that don't exist on disk
 - CLAUDE.md mentions tools not installed in `.venv` (when venv exists)
 - CLAUDE.md references files or paths that don't exist in the project
 - CLAUDE.md mentions packages not found in `pyproject.toml` dependencies
-- Detected infrastructure area has zero coverage in CLAUDE.md (e.g., Docker setup exists but CLAUDE.md never mentions containers, or Alembic exists but no migration guidance)
-- CLAUDE.md describes workflows that contradict actual CI configuration (e.g., says "we use pytest-cov" but CI doesn't run coverage)
+- Detected infrastructure area has zero coverage in CLAUDE.md
+- CLAUDE.md describes workflows that contradict actual CI configuration
 - No CLAUDE.md at all when project has 4+ detected infrastructure areas
-- CLAUDE.md lists key files but is missing more than a third of the actual source files (stale — files were likely added after CLAUDE.md was written)
+- CLAUDE.md lists key files but is missing more than a third of the actual source files
 
-**INFO triggers:**
+**INFO:**
 - CLAUDE.md exists but is very short (< 20 lines) for a project with 5+ infra areas
 - CLAUDE.md doesn't describe how to set up the development environment
 - CLAUDE.md doesn't describe how to run tests
 
 ---
 
-## Phase 3: Report
+## Phase 3: Report + Save (1 LLM round)
 
-After completing the audit, calculate the score and output a structured report.
+Collect all results: verify.sh JSON + area agent findings + CLAUDE.md agent findings. Merge into a unified findings list. Map verify.sh JSON fields to severity-tagged findings using the trigger rules above.
 
 ### Score calculation
 - Start at 10.0
@@ -404,33 +300,27 @@ If score < 5.0:
 ```
 
 ### Rules
-- Project name: derived from `pyproject.toml` `[project] name` or the directory name
+- Project name: derived from detection JSON `project_name` field
 - Date: use today's date
 - Group findings by severity, then by area within each severity
 - Each finding must include a concrete, copy-pasteable fix (command, config snippet, or file to create)
 - If a CRITICAL finding has a one-liner fix, include the exact command
 
----
-
-## Phase 4: Save audit history
+### Save audit history
 
 After outputting the report, persist the results so future sessions have context on what was audited and when.
 
 **History location:** `~/.claude/infra/history/`
 
-### Filename with path hash
-
-Compute a unique filename to avoid collisions between repos with the same name in different directories:
-
+**Filename with path hash:**
 ```bash
-SANITIZED="{project-name}"   # same sanitized name from Phase 3
+SANITIZED="{project-name}"   # same sanitized name from the report
 PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
 HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
 LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
 ```
 
-### Read existing history
-
+**Read existing history:**
 1. If `$HISTORY_FILE` exists, read it (via Read tool) and extract the `runs` array
 2. Else if `$LEGACY_FILE` exists, read it instead — this is a v1 migration
 3. If the file has no `runs` array (v1 schema), seed the array with one entry from the existing top-level fields:
@@ -444,17 +334,13 @@ LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
    Sort the seeded entries by date.
 4. If no history file exists at all, start with an empty `runs` array
 
-### Append current run
-
-Add a new entry to the `runs` array:
+**Append current run:**
 ```json
 {"date": "{today}", "type": "audit", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
 ```
-
 If `runs` has more than 50 entries after appending, drop the oldest entries to keep only the last 50.
 
-### Write schema v2 JSON
-
+**Write schema v2 JSON:**
 ```json
 {
   "schema_version": 2,
@@ -472,8 +358,6 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 
 **IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report.
 
-### Cleanup legacy file
+**Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
 
-If `$LEGACY_FILE` exists and `$LEGACY_FILE` differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file.
-
-This is silent bookkeeping — do NOT print anything about it to the user.
+**Cleanup temp file:** Remove `/tmp/infra-detect-$$.json` after the audit completes.
