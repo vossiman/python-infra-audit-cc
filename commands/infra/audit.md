@@ -14,7 +14,7 @@ allowed-tools:
   - TaskList
   - TaskGet
   - SendMessage
-argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|all)"
+argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|claude-md|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
@@ -50,6 +50,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | renovate | `renovate.json`, `.renovaterc`, `.renovaterc.json`, or `.github/renovate.json` |
 | venv | `.venv/bin/python` exists and is executable |
 | env | Config pattern — detect which config mechanism the project uses. Check for `.env`, `config.json`, `config.yaml`, `config.toml`, `settings.json`, `settings.yaml`, `.env.*` variants. Then check `.gitignore` for matching patterns and look for a corresponding example/template file (e.g. `example.env`, `config.example.json`, `config.json.example`). |
+| claude-md | `CLAUDE.md` in project root, `.claude/CLAUDE.md`, or `CLAUDE.md` files in subdirectories |
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
 ```
@@ -57,6 +58,7 @@ Print a styled detection summary using checkmarks and crosses. Split across two 
 
   [x] ruff        [x] pyright     [ ] pre-commit  [x] CI          [x] pyproject
   [x] uv          [ ] docker      [x] makefile    [x] alembic     [x] env
+  [x] claude-md
 ```
 Use `[x]` for detected and `[ ]` for not found.
 
@@ -161,6 +163,65 @@ For each applicable area, read the relevant config files and compare against the
 - Alternative CI provider (GitLab, CircleCI) — just note it
 - `docker-compose.yml` instead of `compose.yml` (old naming, still works)
 - Pyright not installed locally (may be run via CI only)
+
+---
+
+## Phase 2b: CLAUDE.md Audit
+
+This audit is cross-cutting — it validates that the project's CLAUDE.md accurately reflects the actual infrastructure. It runs as its own dedicated team after Phase 2 completes, because it needs both the detection results AND the infra audit findings as context.
+
+**Skip this phase** if `claude-md` was not detected AND not explicitly requested. If the user requested only a specific non-claude-md area, also skip.
+
+### Team strategy — always use a dedicated team
+
+The CLAUDE.md audit always spawns its own team (`claude-md-audit`) with three parallel agents:
+
+1. **Extractor** (`Explore` agent) — Reads all CLAUDE.md files found in the project. Extracts and categorizes every claim:
+   - **Commands**: shell commands, make targets, script invocations (e.g., `make lint`, `uv run pytest`, `./scripts/deploy.sh`)
+   - **File references**: paths mentioned as important (e.g., "edit `.env`", "see `config.yaml`")
+   - **Tool references**: dev tools mentioned (e.g., ruff, pyright, pytest, pre-commit, docker, alembic)
+   - **Workflow references**: CI/CD, deployment, or automation mentions
+   - **Package references**: Python packages mentioned by name
+   - Returns a structured list of all extracted claims by category
+
+2. **Verifier** (`Explore` agent) — Receives the extractor's claims and checks each against the actual project:
+   - For commands: check that make targets exist in Makefile, scripts exist on disk, referenced binaries are in `.venv/bin/`
+   - For file references: Glob to confirm each path exists
+   - For tool references: cross-check against the Phase 1 detection results and venv probe
+   - For package references: check against `pyproject.toml` dependencies
+   - Returns: list of stale/broken references with `claim | type | status (valid/stale/broken) | details`
+
+3. **Coverage checker** (`Explore` agent) — Receives the Phase 1 detection results and reads CLAUDE.md to find gaps:
+   - For each detected infra area, check if CLAUDE.md mentions it or gives relevant guidance
+   - Flag detected areas with zero CLAUDE.md coverage (e.g., project has Alembic but CLAUDE.md never mentions migrations)
+   - Flag if common developer workflows are undocumented (how to run tests, how to lint, how to set up the project)
+   - Returns: list of coverage gaps with `area | covered (yes/no) | details`
+
+### Execution flow
+
+1. Create team `claude-md-audit` with `TeamCreate`
+2. Create tasks for all three agents
+3. Spawn **Extractor** first — it must complete before the Verifier can start
+4. Once Extractor returns, spawn **Verifier** and **Coverage checker** in parallel (Verifier gets the extracted claims; Coverage checker gets detection results)
+5. Collect all findings, tear down team with `TeamDelete`
+6. Merge findings into the main report alongside Phase 2 results
+
+### CLAUDE.md audit triggers
+
+**WARNING triggers:**
+- CLAUDE.md references make targets that don't exist in the Makefile
+- CLAUDE.md references commands or scripts that don't exist on disk
+- CLAUDE.md mentions tools not installed in `.venv` (when venv exists)
+- CLAUDE.md references files or paths that don't exist in the project
+- CLAUDE.md mentions packages not found in `pyproject.toml` dependencies
+- Detected infrastructure area has zero coverage in CLAUDE.md (e.g., Docker setup exists but CLAUDE.md never mentions containers, or Alembic exists but no migration guidance)
+- CLAUDE.md describes workflows that contradict actual CI configuration (e.g., says "we use pytest-cov" but CI doesn't run coverage)
+- No CLAUDE.md at all when project has 4+ detected infrastructure areas
+
+**INFO triggers:**
+- CLAUDE.md exists but is very short (< 20 lines) for a project with 5+ infra areas
+- CLAUDE.md doesn't describe how to set up the development environment
+- CLAUDE.md doesn't describe how to run tests
 
 ---
 
