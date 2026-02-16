@@ -6,7 +6,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-argument-hint: "[area] (ruff|pyright|pre-commit|ci|pyproject|uv|docker|makefile|alembic|env|all)"
+argument-hint: "[area] (ruff|pyright|pre-commit|ci|pyproject|uv|venv|docker|makefile|alembic|env|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
@@ -34,6 +34,7 @@ Scan the project root for key files to determine which infrastructure areas exis
 | docker | `Dockerfile*` or `compose.yml` or `docker-compose.yml` |
 | makefile | `Makefile` |
 | alembic | `alembic.ini` |
+| venv | `.venv/bin/python` exists and is executable |
 | env | `.env` pattern (check `.gitignore` for `.env`, look for `example.env`) |
 
 Print a styled detection summary using checkmarks and crosses. Split across two rows for readability:
@@ -44,6 +45,17 @@ Print a styled detection summary using checkmarks and crosses. Split across two 
   [x] uv          [ ] docker      [x] makefile    [x] alembic     [x] env
 ```
 Use `[x]` for detected and `[ ]` for not found.
+
+**venv probing** — when a `.venv` is detected, use Bash to inventory installed dev tools. Run each command and record the version or "missing":
+```bash
+.venv/bin/python --version
+.venv/bin/ruff --version
+.venv/bin/pytest --version
+.venv/bin/pre-commit --version
+```
+For pyright, check `npx pyright --version` (node-based) OR `.venv/bin/pyright --version` (pip-based) — either is acceptable.
+
+Also verify the venv's Python version matches `requires-python` from `pyproject.toml`.
 
 Skip areas that are not detected AND not explicitly requested. If the user requests a specific area that isn't detected, report it as a CRITICAL finding (missing entirely).
 
@@ -68,6 +80,7 @@ For each applicable area, read the relevant config files and compare against the
 - Lock files (`uv.lock`, `poetry.lock`, `package-lock.json`) in `.gitignore`
 - No `.gitignore` at all
 - Actual secrets (API keys matching `sk-`, `key-`, long hex strings) in tracked files
+- No `.venv` when Python source files exist (tools can't run without an environment)
 
 ### WARNING triggers (common issues)
 - ruff configured but missing security rules (`S`)
@@ -82,6 +95,10 @@ For each applicable area, read the relevant config files and compare against the
 - Makefile missing `help` target
 - Alembic `env.py` missing model imports for autogenerate
 - No `example.env` when `.env` is gitignored
+- `.venv` exists but `ruff` not installed (when ruff config is present)
+- `.venv` exists but `pytest` not installed (when test files exist)
+- `.venv` exists but `pre-commit` not installed (when `.pre-commit-config.yaml` exists)
+- `.venv` Python version doesn't match `requires-python` from `pyproject.toml`
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)
@@ -90,6 +107,7 @@ For each applicable area, read the relevant config files and compare against the
 - Tests exist but no `asyncio_mode` configured (may not need async)
 - Alternative CI provider (GitLab, CircleCI) — just note it
 - `docker-compose.yml` instead of `compose.yml` (old naming, still works)
+- Pyright not installed locally (may be run via CI only)
 
 ---
 
