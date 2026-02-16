@@ -6,6 +6,14 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
+  - Task
+  - TeamCreate
+  - TeamDelete
+  - TaskCreate
+  - TaskUpdate
+  - TaskList
+  - TaskGet
+  - SendMessage
 argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|all)"
 ---
 
@@ -64,6 +72,42 @@ Skip areas that are not detected AND not explicitly requested. If the user reque
 ---
 
 ## Phase 2: Audit
+
+### Parallel execution strategy
+
+After detection, you know which areas to audit. Each area's audit is independent — they read different config files and check different things. Parallelize them:
+
+**If 4+ areas to audit → use an agent team:**
+
+1. Create a team with `TeamCreate` (name: `infra-audit`)
+2. For each area, create a task with `TaskCreate` containing:
+   - The area name
+   - Which files to read and what to check (from the triggers below)
+   - The relevant blueprint section for comparison
+   - The detection results (which files exist, venv tool versions)
+3. Spawn one `Explore` agent per area using the `Task` tool with `team_name` set — these agents are read-only which is what we need
+4. Each agent returns its findings as a structured list: `severity | area | short description | current | expected | fix`
+5. Collect all findings, tear down the team with `TeamDelete`, proceed to Phase 3
+
+**If 2-3 areas to audit → use parallel sub-agents:**
+
+1. Spawn one `Explore` sub-agent per area via the `Task` tool (no team)
+2. Launch all sub-agents in a single message (parallel tool calls)
+3. Each returns findings in the same structured format
+4. Collect and proceed to Phase 3
+
+**If only 1 area → audit it directly.** No agents needed.
+
+**Sub-agent prompt template** — every agent (team or sub-agent) must receive:
+- The area it's responsible for
+- The detection context (which files were found, venv tool versions if relevant)
+- The project's `requires-python` value (if found)
+- The full list of triggers below relevant to its area
+- The blueprint standards for its area
+- Instruction to return findings as: `severity | area | description | current | expected | fix`
+- Instruction that this is READ-ONLY — no file modifications
+
+### Audit criteria
 
 For each applicable area, read the relevant config files and compare against the blueprint standards. Classify each finding:
 
