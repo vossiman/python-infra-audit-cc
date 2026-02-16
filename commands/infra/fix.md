@@ -215,6 +215,8 @@ If any fixes failed or the score didn't improve as expected, list what went wron
 After validation, update the audit history file for this project at `~/.claude/infra/history/{project-name}.json`:
 
 - Overwrite the file with the **new** post-fix audit results (same format as `infra:audit` Phase 4)
+- **Add a `last_fix` field** with today's date (ISO format, e.g. `"2026-02-16"`) alongside the existing `last_audit` field
+- If a `last_fix` field already exists from a previous run, overwrite it with today's date
 - This ensures the history reflects the current state, not stale pre-fix findings
 
 Use Bash to write the updated JSON. This is silent — do not print anything about it.

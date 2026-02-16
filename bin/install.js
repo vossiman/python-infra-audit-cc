@@ -151,8 +151,11 @@ const PATCHES_DIR_NAME = 'infra-audit-local-patches';
 const OUR_FILES = [
   'commands/infra/audit.md',
   'commands/infra/fix.md',
+  'commands/infra/status.md',
   'commands/infra/update.md',
   'infra/blueprint.md',
+  'infra/blueprints/ci.yml',
+  'infra/blueprints/renovate.yml',
   'infra/VERSION',
   'hooks/infra-check-update.js',
   MANIFEST_NAME,
@@ -290,7 +293,34 @@ function install(isGlobal) {
     failures.push('commands/infra/fix.md');
   }
 
-  // ── 4. infra/blueprint.md (preserves infra/history/) ──
+  // ── 4. commands/infra/status.md ──
+  const statusSrc = path.join(src, 'commands', 'infra', 'status.md');
+  const statusDest = path.join(configDir, 'commands', 'infra', 'status.md');
+  let statusContent = fs.readFileSync(statusSrc, 'utf8');
+  statusContent = statusContent.replace(/~\/\.claude\//g, pathPrefix);
+  fs.writeFileSync(statusDest, statusContent);
+  if (fs.existsSync(statusDest)) {
+    console.log(`  ${green}✓${reset} Installed commands/infra/status.md`);
+  } else {
+    failures.push('commands/infra/status.md');
+  }
+
+  // ── 5. infra/blueprints/*.yml ──
+  const blueprintsDir = path.join(src, 'infra', 'blueprints');
+  const blueprintsDest = path.join(configDir, 'infra', 'blueprints');
+  fs.mkdirSync(blueprintsDest, { recursive: true });
+  for (const ymlName of ['ci.yml', 'renovate.yml']) {
+    const ymlSrc = path.join(blueprintsDir, ymlName);
+    const ymlDest = path.join(blueprintsDest, ymlName);
+    fs.copyFileSync(ymlSrc, ymlDest);
+    if (fs.existsSync(ymlDest)) {
+      console.log(`  ${green}✓${reset} Installed infra/blueprints/${ymlName}`);
+    } else {
+      failures.push(`infra/blueprints/${ymlName}`);
+    }
+  }
+
+  // ── 6. infra/blueprint.md (preserves infra/history/) ──
   const blueprintSrc = path.join(src, 'infra', 'blueprint.md');
   const blueprintDest = path.join(configDir, 'infra', 'blueprint.md');
   fs.mkdirSync(path.dirname(blueprintDest), { recursive: true });
@@ -301,7 +331,7 @@ function install(isGlobal) {
     failures.push('infra/blueprint.md');
   }
 
-  // ── 4. infra/VERSION ──
+  // ── 7. infra/VERSION ──
   const versionDest = path.join(configDir, 'infra', 'VERSION');
   fs.writeFileSync(versionDest, pkg.version);
   if (fs.existsSync(versionDest)) {
@@ -310,7 +340,7 @@ function install(isGlobal) {
     failures.push('infra/VERSION');
   }
 
-  // ── 5. hooks/infra-check-update.js ──
+  // ── 8. hooks/infra-check-update.js ──
   const hookSrc = path.join(src, 'hooks', 'infra-check-update.js');
   const hookDest = path.join(configDir, 'hooks', 'infra-check-update.js');
   fs.mkdirSync(path.dirname(hookDest), { recursive: true });
@@ -327,7 +357,7 @@ function install(isGlobal) {
     process.exit(1);
   }
 
-  // ── 6. Settings.json — additive hook merge ──
+  // ── 9. Settings.json — additive hook merge ──
   const settingsPath = path.join(configDir, 'settings.json');
   const settings = readSettings(settingsPath);
 
@@ -364,7 +394,7 @@ function install(isGlobal) {
 
   writeSettings(settingsPath, settings);
 
-  // ── 7. Write manifest ──
+  // ── 10. Write manifest ──
   const manifest = {
     version: pkg.version,
     timestamp: new Date().toISOString(),
@@ -375,8 +405,11 @@ function install(isGlobal) {
   const installedFiles = [
     { rel: 'commands/infra/audit.md', abs: auditDest },
     { rel: 'commands/infra/fix.md', abs: fixDest },
+    { rel: 'commands/infra/status.md', abs: statusDest },
     { rel: 'commands/infra/update.md', abs: updateDest },
     { rel: 'infra/blueprint.md', abs: blueprintDest },
+    { rel: 'infra/blueprints/ci.yml', abs: path.join(blueprintsDest, 'ci.yml') },
+    { rel: 'infra/blueprints/renovate.yml', abs: path.join(blueprintsDest, 'renovate.yml') },
     { rel: 'infra/VERSION', abs: versionDest },
     { rel: 'hooks/infra-check-update.js', abs: hookDest },
   ];
@@ -397,6 +430,7 @@ function install(isGlobal) {
 
   Other commands:
     ${cyan}/infra:fix${reset}     — Auto-fix audit findings using parallel agents
+    ${cyan}/infra:status${reset}  — Check last audit/fix times and score
     ${cyan}/infra:update${reset}  — Update to the latest version
 `);
 }
@@ -427,8 +461,11 @@ function uninstall(isGlobal) {
   const filesToRemove = [
     'commands/infra/audit.md',
     'commands/infra/fix.md',
+    'commands/infra/status.md',
     'commands/infra/update.md',
     'infra/blueprint.md',
+    'infra/blueprints/ci.yml',
+    'infra/blueprints/renovate.yml',
     'infra/VERSION',
     'hooks/infra-check-update.js',
     MANIFEST_NAME,
@@ -445,6 +482,7 @@ function uninstall(isGlobal) {
 
   // Clean up empty directories (only if we emptied them)
   const dirsToCheck = [
+    path.join(configDir, 'infra', 'blueprints'),
     path.join(configDir, 'infra'),
     path.join(configDir, 'commands', 'infra'),
   ];
