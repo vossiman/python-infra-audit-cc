@@ -20,42 +20,54 @@ const args = process.argv.slice(2);
 const hasGlobal = args.includes('--global') || args.includes('-g');
 const hasLocal = args.includes('--local') || args.includes('-l');
 const hasOpencode = args.includes('--opencode') || args.includes('-o');
+const hasClaude = args.includes('--claude') || args.includes('-c');
+const hasBoth = args.includes('--both') || args.includes('-b');
 const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 const hasHelp = args.includes('--help') || args.includes('-h');
 
-const platformLabel = hasOpencode ? 'OpenCode' : 'Claude Code';
+const hasPlatformFlag = hasOpencode || hasClaude || hasBoth;
+const platformLabel = hasBoth ? 'Both' : hasOpencode ? 'OpenCode' : 'Claude Code';
 
-const banner = '\n' +
-  cyan + '  ╔══════════════════════════════════════╗\n' +
-  '  ║  Python Infra Audit for ' + platformLabel.padEnd(13) + '║\n' +
-  '  ╚══════════════════════════════════════╝' + reset + '\n' +
-  '\n' +
-  '  python-infra-audit-cc ' + dim + 'v' + pkg.version + reset + '\n';
+function printBanner(label) {
+  const padded = (label || platformLabel).padEnd(13);
+  const banner = '\n' +
+    cyan + '  ╔══════════════════════════════════════╗\n' +
+    '  ║  Python Infra Audit for ' + padded + '║\n' +
+    '  ╚══════════════════════════════════════╝' + reset + '\n' +
+    '\n' +
+    '  python-infra-audit-cc ' + dim + 'v' + pkg.version + reset + '\n';
+  console.log(banner);
+}
 
-console.log(banner);
+// Print banner immediately only if platform is already known
+if (hasPlatformFlag || hasHelp || hasUninstall) {
+  printBanner();
+}
 
 // Show help if requested
 if (hasHelp) {
   console.log(`  ${yellow}Usage:${reset} npx python-infra-audit-cc [options]\n
+  ${yellow}Platform:${reset}
+    ${cyan}-c, --claude${reset}      Install for Claude Code
+    ${cyan}-o, --opencode${reset}    Install for OpenCode
+    ${cyan}-b, --both${reset}        Install for both Claude Code and OpenCode
+    ${dim}(no flag)${reset}         Interactive menu to choose platform
+
   ${yellow}Options:${reset}
-    ${cyan}-g, --global${reset}      Install globally to ~/.claude/ (default)
-    ${cyan}-l, --local${reset}       Install locally to ./.claude/ (this project only)
-    ${cyan}-o, --opencode${reset}    Install for OpenCode instead of Claude Code
+    ${cyan}-g, --global${reset}      Install globally (default)
+    ${cyan}-l, --local${reset}       Install locally to current project only
     ${cyan}-u, --uninstall${reset}   Remove all infra-audit files
     ${cyan}-h, --help${reset}        Show this help message
 
   ${yellow}Claude Code examples:${reset}
-    ${dim}# Install globally (default)${reset}
-    npx python-infra-audit-cc
-
-    ${dim}# Install globally (explicit)${reset}
-    npx python-infra-audit-cc --global
+    ${dim}# Install globally${reset}
+    npx python-infra-audit-cc --claude
 
     ${dim}# Install to current project only${reset}
-    npx python-infra-audit-cc --local
+    npx python-infra-audit-cc --claude --local
 
     ${dim}# Uninstall from global${reset}
-    npx python-infra-audit-cc --global --uninstall
+    npx python-infra-audit-cc --claude --uninstall
 
   ${yellow}OpenCode examples:${reset}
     ${dim}# Install globally for OpenCode${reset}
@@ -66,6 +78,13 @@ if (hasHelp) {
 
     ${dim}# Uninstall from OpenCode${reset}
     npx python-infra-audit-cc --opencode --uninstall
+
+  ${yellow}Both platforms:${reset}
+    ${dim}# Install for both${reset}
+    npx python-infra-audit-cc --both
+
+    ${dim}# Uninstall from both${reset}
+    npx python-infra-audit-cc --both --uninstall
 
   ${yellow}After install:${reset}
     Claude Code: run ${cyan}/infra:audit${reset}
@@ -80,9 +99,42 @@ if (hasGlobal && hasLocal) {
   process.exit(1);
 }
 
-if (hasGlobal && hasOpencode) {
-  console.error(`  ${yellow}--global is not needed with --opencode (OpenCode installs globally by default)${reset}`);
+if ((hasOpencode && hasClaude) || (hasOpencode && hasBoth) || (hasClaude && hasBoth)) {
+  console.error(`  ${yellow}Cannot combine --claude, --opencode, and --both — pick one${reset}`);
   process.exit(1);
+}
+
+// ──────────────────────────────────────────────────────
+// Interactive platform menu
+// ──────────────────────────────────────────────────────
+
+function showPlatformMenu() {
+  return new Promise((resolve) => {
+    const readline = require('readline');
+
+    // Show a generic banner for the menu
+    printBanner('AI Coding IDE');
+
+    console.log(`  ${yellow}Choose platform:${reset}\n`);
+    console.log(`    ${cyan}1)${reset} Claude Code`);
+    console.log(`    ${cyan}2)${reset} OpenCode`);
+    console.log(`    ${cyan}3)${reset} Both`);
+    console.log(`    ${cyan}4)${reset} Cancel\n`);
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    rl.question(`  ${dim}Enter choice [1-4]:${reset} `, (answer) => {
+      rl.close();
+      const choice = answer.trim();
+      if (choice === '1') resolve('claude');
+      else if (choice === '2') resolve('opencode');
+      else if (choice === '3') resolve('both');
+      else resolve('cancel');
+    });
+  });
 }
 
 // ──────────────────────────────────────────────────────
@@ -660,17 +712,54 @@ function uninstall(isGlobal, isOpencode) {
 // Main
 // ──────────────────────────────────────────────────────
 
-if (hasUninstall) {
-  if (!hasGlobal && !hasLocal && !hasOpencode) {
-    console.error(`  ${yellow}--uninstall requires --global, --local, or --opencode${reset}`);
-    process.exit(1);
-  }
-  const isGlobal = !hasLocal;
-  uninstall(isGlobal, hasOpencode);
-} else if (hasGlobal || hasLocal || hasOpencode) {
-  const isGlobal = !hasLocal;
-  install(isGlobal, hasOpencode);
-} else {
-  // Default: Claude Code global
-  install(true, false);
+function installBoth(isGlobal) {
+  console.log(`  ${yellow}Installing for both platforms...${reset}\n`);
+  install(isGlobal, false);
+  console.log(`  ${dim}─────────────────────────────────────${reset}\n`);
+  install(isGlobal, true);
 }
+
+function uninstallBoth(isGlobal) {
+  console.log(`  ${yellow}Uninstalling from both platforms...${reset}\n`);
+  uninstall(isGlobal, false);
+  console.log(`  ${dim}─────────────────────────────────────${reset}\n`);
+  uninstall(isGlobal, true);
+}
+
+async function main() {
+  const isGlobal = !hasLocal;
+
+  if (hasUninstall) {
+    if (hasBoth) {
+      uninstallBoth(isGlobal);
+    } else if (hasPlatformFlag || hasGlobal || hasLocal) {
+      uninstall(isGlobal, hasOpencode);
+    } else {
+      // No platform flag — show menu for uninstall too
+      const choice = await showPlatformMenu();
+      if (choice === 'cancel') {
+        console.log(`\n  ${dim}Cancelled.${reset}\n`);
+        process.exit(0);
+      }
+      console.log('');
+      if (choice === 'both') uninstallBoth(isGlobal);
+      else uninstall(isGlobal, choice === 'opencode');
+    }
+  } else if (hasBoth) {
+    installBoth(isGlobal);
+  } else if (hasPlatformFlag || hasGlobal || hasLocal) {
+    install(isGlobal, hasOpencode);
+  } else {
+    // No flags at all — interactive menu
+    const choice = await showPlatformMenu();
+    if (choice === 'cancel') {
+      console.log(`\n  ${dim}Cancelled.${reset}\n`);
+      process.exit(0);
+    }
+    console.log('');
+    if (choice === 'both') installBoth(isGlobal);
+    else install(isGlobal, choice === 'opencode');
+  }
+}
+
+main();
