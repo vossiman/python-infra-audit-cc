@@ -1,7 +1,7 @@
 {
   "name": "python-infra-audit-cc",
   "version": "1.1.0",
-  "description": "Python infrastructure audit skill for Claude Code — audit projects against a known-good blueprint",
+  "description": "Python infrastructure audit skill for Claude Code and OpenCode — audit projects against a known-good blueprint",
   "bin": {
     "python-infra-audit-cc": "bin/install.js"
   },
@@ -16,6 +16,7 @@
   },
   "keywords": [
     "claude-code",
+    "opencode",
     "python",
     "infrastructure",
     "audit",

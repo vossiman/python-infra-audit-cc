@@ -19,12 +19,15 @@ const pkg = require('../package.json');
 const args = process.argv.slice(2);
 const hasGlobal = args.includes('--global') || args.includes('-g');
 const hasLocal = args.includes('--local') || args.includes('-l');
+const hasOpencode = args.includes('--opencode') || args.includes('-o');
 const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 const hasHelp = args.includes('--help') || args.includes('-h');
 
+const platformLabel = hasOpencode ? 'OpenCode' : 'Claude Code';
+
 const banner = '\n' +
   cyan + '  ╔══════════════════════════════════════╗\n' +
-  '  ║  Python Infra Audit for Claude Code  ║\n' +
+  '  ║  Python Infra Audit for ' + platformLabel.padEnd(13) + '║\n' +
   '  ╚══════════════════════════════════════╝' + reset + '\n' +
   '\n' +
   '  python-infra-audit-cc ' + dim + 'v' + pkg.version + reset + '\n';
@@ -37,10 +40,11 @@ if (hasHelp) {
   ${yellow}Options:${reset}
     ${cyan}-g, --global${reset}      Install globally to ~/.claude/ (default)
     ${cyan}-l, --local${reset}       Install locally to ./.claude/ (this project only)
-    ${cyan}-u, --uninstall${reset}   Remove all infra:audit files
+    ${cyan}-o, --opencode${reset}    Install for OpenCode instead of Claude Code
+    ${cyan}-u, --uninstall${reset}   Remove all infra-audit files
     ${cyan}-h, --help${reset}        Show this help message
 
-  ${yellow}Examples:${reset}
+  ${yellow}Claude Code examples:${reset}
     ${dim}# Install globally (default)${reset}
     npx python-infra-audit-cc
 
@@ -53,8 +57,19 @@ if (hasHelp) {
     ${dim}# Uninstall from global${reset}
     npx python-infra-audit-cc --global --uninstall
 
+  ${yellow}OpenCode examples:${reset}
+    ${dim}# Install globally for OpenCode${reset}
+    npx python-infra-audit-cc --opencode
+
+    ${dim}# Install to current project only${reset}
+    npx python-infra-audit-cc --opencode --local
+
+    ${dim}# Uninstall from OpenCode${reset}
+    npx python-infra-audit-cc --opencode --uninstall
+
   ${yellow}After install:${reset}
-    Launch Claude Code and run ${cyan}/infra:audit${reset}
+    Claude Code: run ${cyan}/infra:audit${reset}
+    OpenCode:    run ${cyan}/infra-audit${reset}
 `);
   process.exit(0);
 }
@@ -65,6 +80,11 @@ if (hasGlobal && hasLocal) {
   process.exit(1);
 }
 
+if (hasGlobal && hasOpencode) {
+  console.error(`  ${yellow}--global is not needed with --opencode (OpenCode installs globally by default)${reset}`);
+  process.exit(1);
+}
+
 // ──────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────
@@ -72,7 +92,17 @@ if (hasGlobal && hasLocal) {
 /**
  * Get the config directory path
  */
-function getConfigDir(isGlobal) {
+function getConfigDir(isGlobal, isOpencode) {
+  if (isOpencode) {
+    if (isGlobal) {
+      if (process.env.OPENCODE_CONFIG_DIR) {
+        const dir = process.env.OPENCODE_CONFIG_DIR;
+        return dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir;
+      }
+      return path.join(os.homedir(), '.config', 'opencode');
+    }
+    return path.join(process.cwd(), '.opencode');
+  }
   if (isGlobal) {
     if (process.env.CLAUDE_CONFIG_DIR) {
       const dir = process.env.CLAUDE_CONFIG_DIR;
@@ -140,6 +170,29 @@ function generateManifest(dir, baseDir) {
   return manifest;
 }
 
+/**
+ * Transform command markdown content for OpenCode.
+ * - Rewrite frontmatter: keep only description
+ * - Replace /infra:X → /infra-X (slash command references)
+ * - Replace `infra:X` → `infra-X` (backtick-quoted references)
+ */
+function transformForOpencode(content) {
+  // 1. Rewrite frontmatter: keep only description
+  content = content.replace(/^---\n([\s\S]*?)\n---/, (match, fm) => {
+    const descMatch = fm.match(/^description:\s*(.+)$/m);
+    if (descMatch) {
+      return `---\ndescription: ${descMatch[1]}\n---`;
+    }
+    return '---\n---';
+  });
+
+  // 2. Replace infra:audit/fix/status/update → infra-audit/fix/status/update
+  //    Covers all contexts: /infra:audit, `infra:audit`, plain text "infra:audit"
+  content = content.replace(/infra:(audit|fix|status|update)/g, 'infra-$1');
+
+  return content;
+}
+
 // ──────────────────────────────────────────────────────
 // Constants — files we own
 // ──────────────────────────────────────────────────────
@@ -147,7 +200,10 @@ function generateManifest(dir, baseDir) {
 const MANIFEST_NAME = 'infra-audit-manifest.json';
 const PATCHES_DIR_NAME = 'infra-audit-local-patches';
 
-// Files we install (relative to config dir)
+// Command names (source files live at commands/infra/{name}.md)
+const COMMAND_NAMES = ['audit', 'fix', 'status', 'update'];
+
+// Files we install (relative to config dir) — Claude Code layout
 const OUR_FILES = [
   'commands/infra/audit.md',
   'commands/infra/fix.md',
@@ -160,6 +216,21 @@ const OUR_FILES = [
   'infra/scripts/verify.sh',
   'infra/VERSION',
   'hooks/infra-check-update.js',
+  MANIFEST_NAME,
+];
+
+// Files we install (relative to config dir) — OpenCode layout (flat commands, no hooks)
+const OUR_FILES_OPENCODE = [
+  'commands/infra-audit.md',
+  'commands/infra-fix.md',
+  'commands/infra-status.md',
+  'commands/infra-update.md',
+  'infra/blueprint.md',
+  'infra/blueprints/ci.yml',
+  'infra/blueprints/renovate.yml',
+  'infra/scripts/detect.sh',
+  'infra/scripts/verify.sh',
+  'infra/VERSION',
   MANIFEST_NAME,
 ];
 
@@ -236,18 +307,18 @@ function reportLocalPatches(configDir) {
 // Install
 // ──────────────────────────────────────────────────────
 
-function install(isGlobal) {
+function install(isGlobal, isOpencode) {
   const src = path.join(__dirname, '..');
-  const configDir = getConfigDir(isGlobal);
+  const configDir = getConfigDir(isGlobal, isOpencode);
 
   const locationLabel = isGlobal
     ? configDir.replace(os.homedir(), '~')
     : configDir.replace(process.cwd(), '.');
 
-  // Path prefix for file references in markdown content
+  // Path prefix for @file references in markdown content
   const pathPrefix = isGlobal
     ? `${configDir.replace(/\\/g, '/')}/`
-    : './.claude/';
+    : isOpencode ? './.opencode/' : './.claude/';
 
   console.log(`  Installing to ${cyan}${locationLabel}${reset}\n`);
 
@@ -257,57 +328,49 @@ function install(isGlobal) {
   // Track failures
   const failures = [];
 
-  // ── 1. commands/infra/audit.md ──
-  const auditSrc = path.join(src, 'commands', 'infra', 'audit.md');
-  const auditDest = path.join(configDir, 'commands', 'infra', 'audit.md');
-  fs.mkdirSync(path.dirname(auditDest), { recursive: true });
-  let auditContent = fs.readFileSync(auditSrc, 'utf8');
-  // Path template: replace ~/.claude/ with the actual install path
-  auditContent = auditContent.replace(/~\/\.claude\//g, pathPrefix);
-  fs.writeFileSync(auditDest, auditContent);
-  if (fs.existsSync(auditDest)) {
-    console.log(`  ${green}✓${reset} Installed commands/infra/audit.md`);
-  } else {
-    failures.push('commands/infra/audit.md');
+  // Track installed files for manifest
+  const installedFiles = [];
+
+  // ── 1. Command files ──
+  for (const name of COMMAND_NAMES) {
+    const cmdSrc = path.join(src, 'commands', 'infra', `${name}.md`);
+
+    // OpenCode: flat commands/infra-{name}.md; Claude Code: commands/infra/{name}.md
+    const destRelPath = isOpencode
+      ? `commands/infra-${name}.md`
+      : `commands/infra/${name}.md`;
+    const destFull = path.join(configDir, destRelPath);
+
+    fs.mkdirSync(path.dirname(destFull), { recursive: true });
+
+    let content = fs.readFileSync(cmdSrc, 'utf8');
+    // Path template: replace ~/.claude/ with the actual install path
+    content = content.replace(/~\/\.claude\//g, pathPrefix);
+
+    if (isOpencode) {
+      // Replace $HOME/.claude/ with OpenCode path for bash runtime references
+      content = content.replace(/\$HOME\/\.claude\//g, '$HOME/.config/opencode/');
+      // Replace ./.claude/ with ./.opencode/ for local project references
+      content = content.replace(/\.\/\.claude\//g, './.opencode/');
+      // Transform frontmatter and command references
+      content = transformForOpencode(content);
+      // update.md: rewrite installer flags for OpenCode
+      if (name === 'update') {
+        content = content.replace(/--global/g, '--opencode');
+        content = content.replace(/--local/g, '--opencode --local');
+      }
+    }
+
+    fs.writeFileSync(destFull, content);
+    if (fs.existsSync(destFull)) {
+      console.log(`  ${green}✓${reset} Installed ${destRelPath}`);
+      installedFiles.push({ rel: destRelPath, abs: destFull });
+    } else {
+      failures.push(destRelPath);
+    }
   }
 
-  // ── 2. commands/infra/update.md ──
-  const updateSrc = path.join(src, 'commands', 'infra', 'update.md');
-  const updateDest = path.join(configDir, 'commands', 'infra', 'update.md');
-  let updateContent = fs.readFileSync(updateSrc, 'utf8');
-  updateContent = updateContent.replace(/~\/\.claude\//g, pathPrefix);
-  fs.writeFileSync(updateDest, updateContent);
-  if (fs.existsSync(updateDest)) {
-    console.log(`  ${green}✓${reset} Installed commands/infra/update.md`);
-  } else {
-    failures.push('commands/infra/update.md');
-  }
-
-  // ── 3. commands/infra/fix.md ──
-  const fixSrc = path.join(src, 'commands', 'infra', 'fix.md');
-  const fixDest = path.join(configDir, 'commands', 'infra', 'fix.md');
-  let fixContent = fs.readFileSync(fixSrc, 'utf8');
-  fixContent = fixContent.replace(/~\/\.claude\//g, pathPrefix);
-  fs.writeFileSync(fixDest, fixContent);
-  if (fs.existsSync(fixDest)) {
-    console.log(`  ${green}✓${reset} Installed commands/infra/fix.md`);
-  } else {
-    failures.push('commands/infra/fix.md');
-  }
-
-  // ── 4. commands/infra/status.md ──
-  const statusSrc = path.join(src, 'commands', 'infra', 'status.md');
-  const statusDest = path.join(configDir, 'commands', 'infra', 'status.md');
-  let statusContent = fs.readFileSync(statusSrc, 'utf8');
-  statusContent = statusContent.replace(/~\/\.claude\//g, pathPrefix);
-  fs.writeFileSync(statusDest, statusContent);
-  if (fs.existsSync(statusDest)) {
-    console.log(`  ${green}✓${reset} Installed commands/infra/status.md`);
-  } else {
-    failures.push('commands/infra/status.md');
-  }
-
-  // ── 5. infra/blueprints/*.yml ──
+  // ── 2. infra/blueprints/*.yml ──
   const blueprintsDir = path.join(src, 'infra', 'blueprints');
   const blueprintsDest = path.join(configDir, 'infra', 'blueprints');
   fs.mkdirSync(blueprintsDest, { recursive: true });
@@ -317,23 +380,25 @@ function install(isGlobal) {
     fs.copyFileSync(ymlSrc, ymlDest);
     if (fs.existsSync(ymlDest)) {
       console.log(`  ${green}✓${reset} Installed infra/blueprints/${ymlName}`);
+      installedFiles.push({ rel: `infra/blueprints/${ymlName}`, abs: ymlDest });
     } else {
       failures.push(`infra/blueprints/${ymlName}`);
     }
   }
 
-  // ── 6. infra/blueprint.md (preserves infra/history/) ──
+  // ── 3. infra/blueprint.md (preserves infra/history/) ──
   const blueprintSrc = path.join(src, 'infra', 'blueprint.md');
   const blueprintDest = path.join(configDir, 'infra', 'blueprint.md');
   fs.mkdirSync(path.dirname(blueprintDest), { recursive: true });
   fs.copyFileSync(blueprintSrc, blueprintDest);
   if (fs.existsSync(blueprintDest)) {
     console.log(`  ${green}✓${reset} Installed infra/blueprint.md`);
+    installedFiles.push({ rel: 'infra/blueprint.md', abs: blueprintDest });
   } else {
     failures.push('infra/blueprint.md');
   }
 
-  // ── 7. infra/scripts/*.sh ──
+  // ── 4. infra/scripts/*.sh ──
   const scriptsDir = path.join(src, 'infra', 'scripts');
   const scriptsDest = path.join(configDir, 'infra', 'scripts');
   fs.mkdirSync(scriptsDest, { recursive: true });
@@ -346,29 +411,35 @@ function install(isGlobal) {
     fs.chmodSync(scriptOut, 0o755);
     if (fs.existsSync(scriptOut)) {
       console.log(`  ${green}✓${reset} Installed infra/scripts/${scriptName}`);
+      installedFiles.push({ rel: `infra/scripts/${scriptName}`, abs: scriptOut });
     } else {
       failures.push(`infra/scripts/${scriptName}`);
     }
   }
 
-  // ── 8. infra/VERSION ──
+  // ── 5. infra/VERSION ──
   const versionDest = path.join(configDir, 'infra', 'VERSION');
   fs.writeFileSync(versionDest, pkg.version);
   if (fs.existsSync(versionDest)) {
     console.log(`  ${green}✓${reset} Wrote VERSION (${pkg.version})`);
+    installedFiles.push({ rel: 'infra/VERSION', abs: versionDest });
   } else {
     failures.push('infra/VERSION');
   }
 
-  // ── 9. hooks/infra-check-update.js ──
-  const hookSrc = path.join(src, 'hooks', 'infra-check-update.js');
-  const hookDest = path.join(configDir, 'hooks', 'infra-check-update.js');
-  fs.mkdirSync(path.dirname(hookDest), { recursive: true });
-  fs.copyFileSync(hookSrc, hookDest);
-  if (fs.existsSync(hookDest)) {
-    console.log(`  ${green}✓${reset} Installed hooks/infra-check-update.js`);
-  } else {
-    failures.push('hooks/infra-check-update.js');
+  // ── 6. hooks/infra-check-update.js (Claude Code only) ──
+  let hookDest;
+  if (!isOpencode) {
+    const hookSrc = path.join(src, 'hooks', 'infra-check-update.js');
+    hookDest = path.join(configDir, 'hooks', 'infra-check-update.js');
+    fs.mkdirSync(path.dirname(hookDest), { recursive: true });
+    fs.copyFileSync(hookSrc, hookDest);
+    if (fs.existsSync(hookDest)) {
+      console.log(`  ${green}✓${reset} Installed hooks/infra-check-update.js`);
+      installedFiles.push({ rel: 'hooks/infra-check-update.js', abs: hookDest });
+    } else {
+      failures.push('hooks/infra-check-update.js');
+    }
   }
 
   // Check for failures before proceeding
@@ -377,64 +448,52 @@ function install(isGlobal) {
     process.exit(1);
   }
 
-  // ── 10. Settings.json — additive hook merge ──
-  const settingsPath = path.join(configDir, 'settings.json');
-  const settings = readSettings(settingsPath);
+  // ── 7. Settings.json — additive hook merge (Claude Code only) ──
+  if (!isOpencode) {
+    const settingsPath = path.join(configDir, 'settings.json');
+    const settings = readSettings(settingsPath);
 
-  const updateCheckCommand = isGlobal
-    ? buildHookCommand(configDir, 'infra-check-update.js')
-    : 'node .claude/hooks/infra-check-update.js';
+    const updateCheckCommand = isGlobal
+      ? buildHookCommand(configDir, 'infra-check-update.js')
+      : 'node .claude/hooks/infra-check-update.js';
 
-  // Ensure hooks structure exists
-  if (!settings.hooks) {
-    settings.hooks = {};
+    // Ensure hooks structure exists
+    if (!settings.hooks) {
+      settings.hooks = {};
+    }
+    if (!settings.hooks.SessionStart) {
+      settings.hooks.SessionStart = [];
+    }
+
+    // Only add our hook if not already present
+    const hasOurHook = settings.hooks.SessionStart.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('infra-check-update'))
+    );
+
+    if (!hasOurHook) {
+      settings.hooks.SessionStart.push({
+        hooks: [
+          {
+            type: 'command',
+            command: updateCheckCommand,
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Added update check hook to settings.json`);
+    } else {
+      console.log(`  ${dim}─${reset} Update check hook already present`);
+    }
+
+    writeSettings(settingsPath, settings);
   }
-  if (!settings.hooks.SessionStart) {
-    settings.hooks.SessionStart = [];
-  }
 
-  // Only add our hook if not already present
-  const hasOurHook = settings.hooks.SessionStart.some(entry =>
-    entry.hooks && entry.hooks.some(h => h.command && h.command.includes('infra-check-update'))
-  );
-
-  if (!hasOurHook) {
-    settings.hooks.SessionStart.push({
-      hooks: [
-        {
-          type: 'command',
-          command: updateCheckCommand,
-        }
-      ]
-    });
-    console.log(`  ${green}✓${reset} Added update check hook to settings.json`);
-  } else {
-    console.log(`  ${dim}─${reset} Update check hook already present`);
-  }
-
-  writeSettings(settingsPath, settings);
-
-  // ── 11. Write manifest ──
+  // ── 8. Write manifest ──
   const manifest = {
     version: pkg.version,
     timestamp: new Date().toISOString(),
+    platform: isOpencode ? 'opencode' : 'claude-code',
     files: {},
   };
-
-  // Hash all installed files
-  const installedFiles = [
-    { rel: 'commands/infra/audit.md', abs: auditDest },
-    { rel: 'commands/infra/fix.md', abs: fixDest },
-    { rel: 'commands/infra/status.md', abs: statusDest },
-    { rel: 'commands/infra/update.md', abs: updateDest },
-    { rel: 'infra/blueprint.md', abs: blueprintDest },
-    { rel: 'infra/blueprints/ci.yml', abs: path.join(blueprintsDest, 'ci.yml') },
-    { rel: 'infra/blueprints/renovate.yml', abs: path.join(blueprintsDest, 'renovate.yml') },
-    { rel: 'infra/scripts/detect.sh', abs: path.join(scriptsDest, 'detect.sh') },
-    { rel: 'infra/scripts/verify.sh', abs: path.join(scriptsDest, 'verify.sh') },
-    { rel: 'infra/VERSION', abs: versionDest },
-    { rel: 'hooks/infra-check-update.js', abs: hookDest },
-  ];
 
   for (const { rel, abs } of installedFiles) {
     manifest.files[rel] = fileHash(abs);
@@ -447,7 +506,17 @@ function install(isGlobal) {
   // Report any backed-up local patches
   reportLocalPatches(configDir);
 
-  console.log(`
+  if (isOpencode) {
+    console.log(`
+  ${green}Done!${reset} Launch OpenCode and run ${cyan}/infra-audit${reset}
+
+  Other commands:
+    ${cyan}/infra-fix${reset}     — Auto-fix audit findings using parallel agents
+    ${cyan}/infra-status${reset}  — Check last audit/fix times and score
+    ${cyan}/infra-update${reset}  — Update to the latest version
+`);
+  } else {
+    console.log(`
   ${green}Done!${reset} Launch Claude Code and run ${cyan}/infra:audit${reset}
 
   Other commands:
@@ -455,14 +524,15 @@ function install(isGlobal) {
     ${cyan}/infra:status${reset}  — Check last audit/fix times and score
     ${cyan}/infra:update${reset}  — Update to the latest version
 `);
+  }
 }
 
 // ──────────────────────────────────────────────────────
 // Uninstall
 // ──────────────────────────────────────────────────────
 
-function uninstall(isGlobal) {
-  const configDir = getConfigDir(isGlobal);
+function uninstall(isGlobal, isOpencode) {
+  const configDir = getConfigDir(isGlobal, isOpencode);
 
   const locationLabel = isGlobal
     ? configDir.replace(os.homedir(), '~')
@@ -478,22 +548,9 @@ function uninstall(isGlobal) {
 
   let removedCount = 0;
 
-  // Remove our specific files (selective — don't touch other files in commands/infra/)
+  // Remove our specific files (selective — don't touch other files)
   // Note: infra/history/ is NOT removed — it's user data, not ours
-  const filesToRemove = [
-    'commands/infra/audit.md',
-    'commands/infra/fix.md',
-    'commands/infra/status.md',
-    'commands/infra/update.md',
-    'infra/blueprint.md',
-    'infra/blueprints/ci.yml',
-    'infra/blueprints/renovate.yml',
-    'infra/scripts/detect.sh',
-    'infra/scripts/verify.sh',
-    'infra/VERSION',
-    'hooks/infra-check-update.js',
-    MANIFEST_NAME,
-  ];
+  const filesToRemove = isOpencode ? OUR_FILES_OPENCODE : OUR_FILES;
 
   for (const relPath of filesToRemove) {
     const fullPath = path.join(configDir, relPath);
@@ -505,12 +562,18 @@ function uninstall(isGlobal) {
   }
 
   // Clean up empty directories (only if we emptied them)
-  const dirsToCheck = [
-    path.join(configDir, 'infra', 'blueprints'),
-    path.join(configDir, 'infra', 'scripts'),
-    path.join(configDir, 'infra'),
-    path.join(configDir, 'commands', 'infra'),
-  ];
+  const dirsToCheck = isOpencode
+    ? [
+        path.join(configDir, 'infra', 'blueprints'),
+        path.join(configDir, 'infra', 'scripts'),
+        path.join(configDir, 'infra'),
+      ]
+    : [
+        path.join(configDir, 'infra', 'blueprints'),
+        path.join(configDir, 'infra', 'scripts'),
+        path.join(configDir, 'infra'),
+        path.join(configDir, 'commands', 'infra'),
+      ];
 
   for (const dir of dirsToCheck) {
     if (fs.existsSync(dir)) {
@@ -524,42 +587,44 @@ function uninstall(isGlobal) {
     }
   }
 
-  // Remove our hook from settings.json
-  const settingsPath = path.join(configDir, 'settings.json');
-  if (fs.existsSync(settingsPath)) {
-    const settings = readSettings(settingsPath);
-    let settingsModified = false;
+  // Remove our hook from settings.json (Claude Code only)
+  if (!isOpencode) {
+    const settingsPath = path.join(configDir, 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const settings = readSettings(settingsPath);
+      let settingsModified = false;
 
-    if (settings.hooks && settings.hooks.SessionStart) {
-      const before = settings.hooks.SessionStart.length;
-      settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry => {
-        if (entry.hooks && Array.isArray(entry.hooks)) {
-          const hasOurHook = entry.hooks.some(h =>
-            h.command && h.command.includes('infra-check-update')
-          );
-          return !hasOurHook;
+      if (settings.hooks && settings.hooks.SessionStart) {
+        const before = settings.hooks.SessionStart.length;
+        settings.hooks.SessionStart = settings.hooks.SessionStart.filter(entry => {
+          if (entry.hooks && Array.isArray(entry.hooks)) {
+            const hasOurHook = entry.hooks.some(h =>
+              h.command && h.command.includes('infra-check-update')
+            );
+            return !hasOurHook;
+          }
+          return true;
+        });
+
+        if (settings.hooks.SessionStart.length < before) {
+          settingsModified = true;
+          console.log(`  ${green}✓${reset} Removed hook from settings.json`);
         }
-        return true;
-      });
 
-      if (settings.hooks.SessionStart.length < before) {
-        settingsModified = true;
-        console.log(`  ${green}✓${reset} Removed hook from settings.json`);
+        // Clean up empty array
+        if (settings.hooks.SessionStart.length === 0) {
+          delete settings.hooks.SessionStart;
+        }
+        // Clean up empty hooks object
+        if (settings.hooks && Object.keys(settings.hooks).length === 0) {
+          delete settings.hooks;
+        }
       }
 
-      // Clean up empty array
-      if (settings.hooks.SessionStart.length === 0) {
-        delete settings.hooks.SessionStart;
+      if (settingsModified) {
+        writeSettings(settingsPath, settings);
+        removedCount++;
       }
-      // Clean up empty hooks object
-      if (settings.hooks && Object.keys(settings.hooks).length === 0) {
-        delete settings.hooks;
-      }
-    }
-
-    if (settingsModified) {
-      writeSettings(settingsPath, settings);
-      removedCount++;
     }
   }
 
@@ -579,12 +644,14 @@ function uninstall(isGlobal) {
     console.log(`  ${green}✓${reset} Removed local patches backup`);
   }
 
+  const skillName = isOpencode ? 'infra-audit' : 'infra:audit';
+
   if (removedCount === 0) {
-    console.log(`  ${yellow}⚠${reset} No infra:audit files found to remove.`);
+    console.log(`  ${yellow}⚠${reset} No ${skillName} files found to remove.`);
   }
 
   console.log(`
-  ${green}Done!${reset} infra:audit has been uninstalled.
+  ${green}Done!${reset} ${skillName} has been uninstalled.
   Your other files and settings have been preserved.
 `);
 }
@@ -594,14 +661,16 @@ function uninstall(isGlobal) {
 // ──────────────────────────────────────────────────────
 
 if (hasUninstall) {
-  if (!hasGlobal && !hasLocal) {
-    console.error(`  ${yellow}--uninstall requires --global or --local${reset}`);
+  if (!hasGlobal && !hasLocal && !hasOpencode) {
+    console.error(`  ${yellow}--uninstall requires --global, --local, or --opencode${reset}`);
     process.exit(1);
   }
-  uninstall(hasGlobal);
-} else if (hasGlobal || hasLocal) {
-  install(hasGlobal);
+  const isGlobal = !hasLocal;
+  uninstall(isGlobal, hasOpencode);
+} else if (hasGlobal || hasLocal || hasOpencode) {
+  const isGlobal = !hasLocal;
+  install(isGlobal, hasOpencode);
 } else {
-  // Default to global
-  install(true);
+  // Default: Claude Code global
+  install(true, false);
 }
