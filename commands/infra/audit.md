@@ -282,13 +282,17 @@ If section has 0 findings, print the header then "None." on the next line.
      Note: {explanation}
 ```
 
-**Area breakdown table** — standard markdown table with status column:
+**Area breakdown** — icon-based status grid with fixed-width area names. Pad every area name to the same width (longest area name in the report, typically 12 chars for `pre-commit`) so the notes column aligns perfectly:
+```
+━━━ AREA STATUS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-| Area | Status | Notes |
-|------|--------|-------|
-| ruff | PASS | ... |
-| pyright | PASS | ... |
-| ci | 1 warning | ... |
+  ✅ ruff           All rules present, format clean
+  ✅ pyright        basic mode, no errors
+  ⚠️  pre-commit    Missing ruff-format hook
+  ❌ CI             No lint job
+  ✅ pyproject      Complete
+```
+Icons: `✅` = PASS (0 findings), `⚠️` = has warnings only, `❌` = has critical findings. Right-pad every area name with spaces so the description column starts at the same position on every line. Only list areas that were audited (detected or explicitly requested).
 
 **Summary footer** — compact open-right single-line box (keep this short, NO priority list here):
 ```
