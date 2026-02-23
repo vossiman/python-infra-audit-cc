@@ -91,8 +91,8 @@ npx python-infra-audit-cc --both --global
 
 Produces a scored report (0-10) with findings classified as:
 
-- **CRITICAL** (-2 pts): Security risks, missing essential config
-- **WARNING** (-0.5 pts): Best-practice deviations
+- **CRITICAL** (-2 pts, uncapped): Security risks, missing essential config
+- **WARNING** (-0.5 pts, capped at -4 total): Best-practice deviations
 - **INFO** (0 pts): Suggestions, legitimate alternatives
 
 ## Update

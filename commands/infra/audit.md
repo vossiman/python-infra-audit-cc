@@ -111,8 +111,8 @@ For each applicable area, read the relevant config files and compare against the
 
 | Severity | Criteria | Score Impact |
 |----------|----------|-------------|
-| **CRITICAL** | Security risks, committed secrets, broken CI, completely missing essential config | -2 per finding |
-| **WARNING** | Best-practice deviations that may cause issues in practice | -0.5 per finding |
+| **CRITICAL** | Security risks, committed secrets, broken CI, completely missing essential config | -2 per finding (uncapped) |
+| **WARNING** | Best-practice deviations that may cause issues in practice | -0.5 per finding (capped at -4 total) |
 | **INFO** | Nice-to-haves, cosmetic differences, legitimate alternative approaches | No impact |
 
 ### CRITICAL triggers (always flag these)
@@ -225,10 +225,11 @@ Collect all results: verify.sh JSON + area agent findings + CLAUDE.md agent find
 
 ### Score calculation
 - Start at 10.0
-- Subtract 2.0 per CRITICAL finding
-- Subtract 0.5 per WARNING finding
+- Subtract 2.0 per CRITICAL finding (no cap — critical issues always hit hard)
+- Subtract 0.5 per WARNING finding, capped at 4.0 total WARNING deduction (i.e. warnings alone cannot push the score below 6.0)
 - INFO findings don't affect score
 - Minimum score is 0.0
+- Formula: `score = max(0.0, 10.0 - (2.0 × CRITICAL_count) - min(0.5 × WARNING_count, 4.0))`
 
 ### Output styling
 
