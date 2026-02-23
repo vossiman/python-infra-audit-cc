@@ -6,28 +6,28 @@ Checks ruff, pyright, pre-commit, CI/CD, pyproject.toml, uv, Docker, Makefile, A
 
 ## Install
 
-### Claude Code
+Run the installer — it shows a two-step menu to choose your platform (Claude Code / OpenCode / Both) and scope (Global / Local), with the exact destination paths shown:
 
 ```bash
 npx python-infra-audit-cc
 ```
 
-This installs globally to `~/.claude/`. For a project-local install:
+### Non-interactive (flags)
+
+Any flag skips the corresponding menu step:
 
 ```bash
-npx python-infra-audit-cc --local
-```
-
-### OpenCode
-
-```bash
+# Pick platform, still asks global/local
+npx python-infra-audit-cc --claude
 npx python-infra-audit-cc --opencode
-```
+npx python-infra-audit-cc --both
 
-This installs globally to `~/.config/opencode/`. For a project-local install:
-
-```bash
+# Fully non-interactive
+npx python-infra-audit-cc --claude --global
+npx python-infra-audit-cc --claude --local
+npx python-infra-audit-cc --opencode --global
 npx python-infra-audit-cc --opencode --local
+npx python-infra-audit-cc --both --global
 ```
 
 ## Usage
@@ -44,6 +44,8 @@ npx python-infra-audit-cc --opencode --local
 /infra:fix warnings    # Fix only warnings
 
 /infra:status          # Show last audit/fix score and trend
+
+/infra:update-versions # Refresh blueprint version baselines against upstream releases
 ```
 
 ### OpenCode
@@ -58,6 +60,8 @@ npx python-infra-audit-cc --opencode --local
 /infra-fix warnings    # Fix only warnings
 
 /infra-status          # Show last audit/fix score and trend
+
+/infra-update-versions # Refresh blueprint version baselines against upstream releases
 ```
 
 ## What it checks
@@ -75,6 +79,9 @@ npx python-infra-audit-cc --opencode --local
 | **Alembic** | sqlalchemy.url blank, model imports, env var usage |
 | **env** | .env in gitignore, example.env exists, no committed secrets |
 | **deadcode** | Unused functions, variables, imports, classes via vulture |
+| **tests** | Test structure, coverage config, pytest setup, inline-snapshot usage |
+| **renovate** | Renovate config presence, workflow setup, token configuration |
+| **claude-md** | CLAUDE.md presence, project context, commands documented |
 
 ## Output
 
@@ -85,6 +92,10 @@ Produces a scored report (0-10) with findings classified as:
 - **INFO** (0 pts): Suggestions, legitimate alternatives
 
 ## Update
+
+### Update the skill
+
+Pulls the latest published npm release — new audit checks, fixes, and blueprint improvements:
 
 Claude Code:
 ```
@@ -97,22 +108,40 @@ OpenCode:
 ```
 
 Or directly:
-
 ```bash
 npx python-infra-audit-cc@latest
-npx python-infra-audit-cc@latest --opencode   # for OpenCode
+npx python-infra-audit-cc@latest --claude --global
+npx python-infra-audit-cc@latest --opencode --global
 ```
 
-## Uninstall
+### Refresh version baselines
+
+Updates `versions.yml` — the single source of truth for recommended tool and action versions — against the latest upstream releases. Does not require a skill release. Run this whenever you want to pull in fresher version recommendations without waiting for a new npm publish:
 
 Claude Code:
-```bash
-npx python-infra-audit-cc --global --uninstall
+```
+/infra:update-versions
 ```
 
 OpenCode:
+```
+/infra-update-versions
+```
+
+Launches parallel research agents to fetch latest releases from GitHub and PyPI, shows you a diff, then syncs `versions.yml` and all downstream blueprint files on confirmation.
+
+## Uninstall
+
+Interactive (shows the same two-step menu):
 ```bash
-npx python-infra-audit-cc --opencode --uninstall
+npx python-infra-audit-cc --uninstall
+```
+
+Or explicit:
+```bash
+npx python-infra-audit-cc --claude --global --uninstall
+npx python-infra-audit-cc --opencode --global --uninstall
+npx python-infra-audit-cc --both --global --uninstall
 ```
 
 ## How it works
@@ -125,7 +154,9 @@ Installed files:
 - `commands/infra/fix.md` (or `commands/infra-fix.md`) — Auto-fix slash command
 - `commands/infra/status.md` (or `commands/infra-status.md`) — Status dashboard slash command
 - `commands/infra/update.md` (or `commands/infra-update.md`) — Self-update command
+- `commands/infra/update-versions.md` (or `commands/infra-update-versions.md`) — Version baseline refresh command
 - `infra/blueprint.md` — The standards reference document
+- `infra/versions.yml` — Single source of truth for recommended tool and action versions
 - `infra/blueprints/ci.yml` — Canonical CI workflow template
 - `infra/blueprints/renovate.yml` — Canonical Renovate config template
 - `infra/scripts/detect.sh` — Project detection script (frameworks, tools, config files)

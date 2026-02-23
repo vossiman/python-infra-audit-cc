@@ -26,65 +26,72 @@ const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 const hasHelp = args.includes('--help') || args.includes('-h');
 
 const hasPlatformFlag = hasOpencode || hasClaude || hasBoth;
-const platformLabel = hasBoth ? 'Both' : hasOpencode ? 'OpenCode' : 'Claude Code';
+const hasScopeFlag = hasGlobal || hasLocal;
 
-function printBanner(label) {
-  const padded = (label || platformLabel).padEnd(13);
+function platformLabel(platform) {
+  if (platform === 'both') return 'Both';
+  if (platform === 'opencode') return 'OpenCode';
+  if (platform === 'claude') return 'Claude Code';
+  return 'AI Coding IDE';
+}
+
+function printBanner(platform) {
+  // Inner content: 'Python Infra Audit for <label>' padded to 36 chars
+  // Box: ╔════════════════════════════════════════╗ (40 ═, total line width 42 with corners)
+  // Content line: ║  <36 chars>  ║ = 42 chars — always aligned
+  const label = 'Python Infra Audit for ' + platformLabel(platform);
+  const inner = label.padEnd(36);
   const banner = '\n' +
-    cyan + '  ╔══════════════════════════════════════╗\n' +
-    '  ║  Python Infra Audit for ' + padded + '║\n' +
-    '  ╚══════════════════════════════════════╝' + reset + '\n' +
+    cyan + '  ╔════════════════════════════════════════╗\n' +
+    '  ║  ' + inner + '  ║\n' +
+    '  ╚════════════════════════════════════════╝' + reset + '\n' +
     '\n' +
     '  python-infra-audit-cc ' + dim + 'v' + pkg.version + reset + '\n';
   console.log(banner);
 }
 
-// Print banner immediately only if platform is already known
-if (hasPlatformFlag || hasHelp || hasUninstall) {
-  printBanner();
-}
+// Always print banner at startup
+printBanner(hasBoth ? 'both' : hasOpencode ? 'opencode' : hasClaude ? 'claude' : null);
 
 // Show help if requested
 if (hasHelp) {
   console.log(`  ${yellow}Usage:${reset} npx python-infra-audit-cc [options]\n
-  ${yellow}Platform:${reset}
-    ${cyan}-c, --claude${reset}      Install for Claude Code
-    ${cyan}-o, --opencode${reset}    Install for OpenCode
-    ${cyan}-b, --both${reset}        Install for both Claude Code and OpenCode
-    ${dim}(no flag)${reset}         Interactive menu to choose platform
+  ${yellow}Interactive (recommended):${reset}
+    npx python-infra-audit-cc
+    ${dim}Prompts for platform (Claude Code / OpenCode / Both),${reset}
+    ${dim}then for scope (Global / Local) with resolved paths.${reset}
+    ${dim}Any flag below skips the corresponding question.${reset}
 
-  ${yellow}Options:${reset}
-    ${cyan}-g, --global${reset}      Install globally (default)
+  ${yellow}Platform flags:${reset}
+    ${cyan}-c, --claude${reset}      Claude Code only
+    ${cyan}-o, --opencode${reset}    OpenCode only
+    ${cyan}-b, --both${reset}        Both Claude Code and OpenCode
+
+  ${yellow}Scope flags:${reset}
+    ${cyan}-g, --global${reset}      Install globally
     ${cyan}-l, --local${reset}       Install locally to current project only
+
+  ${yellow}Other flags:${reset}
     ${cyan}-u, --uninstall${reset}   Remove all infra-audit files
     ${cyan}-h, --help${reset}        Show this help message
 
-  ${yellow}Claude Code examples:${reset}
-    ${dim}# Install globally${reset}
+  ${yellow}Examples:${reset}
+    ${dim}# Fully interactive${reset}
+    npx python-infra-audit-cc
+
+    ${dim}# Pick platform, still asks global/local${reset}
     npx python-infra-audit-cc --claude
-
-    ${dim}# Install to current project only${reset}
-    npx python-infra-audit-cc --claude --local
-
-    ${dim}# Uninstall from global${reset}
-    npx python-infra-audit-cc --claude --uninstall
-
-  ${yellow}OpenCode examples:${reset}
-    ${dim}# Install globally for OpenCode${reset}
     npx python-infra-audit-cc --opencode
 
-    ${dim}# Install to current project only${reset}
+    ${dim}# Fully non-interactive${reset}
+    npx python-infra-audit-cc --claude --global
     npx python-infra-audit-cc --opencode --local
+    npx python-infra-audit-cc --both --global
 
-    ${dim}# Uninstall from OpenCode${reset}
-    npx python-infra-audit-cc --opencode --uninstall
-
-  ${yellow}Both platforms:${reset}
-    ${dim}# Install for both${reset}
-    npx python-infra-audit-cc --both
-
-    ${dim}# Uninstall from both${reset}
-    npx python-infra-audit-cc --both --uninstall
+    ${dim}# Uninstall (interactive or explicit)${reset}
+    npx python-infra-audit-cc --uninstall
+    npx python-infra-audit-cc --claude --global --uninstall
+    npx python-infra-audit-cc --opencode --global --uninstall
 
   ${yellow}After install:${reset}
     Claude Code: run ${cyan}/infra:audit${reset}
@@ -105,17 +112,14 @@ if ((hasOpencode && hasClaude) || (hasOpencode && hasBoth) || (hasClaude && hasB
 }
 
 // ──────────────────────────────────────────────────────
-// Interactive platform menu
+// Interactive menus
 // ──────────────────────────────────────────────────────
 
 function showPlatformMenu() {
   return new Promise((resolve) => {
     const readline = require('readline');
 
-    // Show a generic banner for the menu
-    printBanner('AI Coding IDE');
-
-    console.log(`  ${yellow}Choose platform:${reset}\n`);
+    console.log(`  ${yellow}Step 1 of 2 — Choose platform:${reset}\n`);
     console.log(`    ${cyan}1)${reset} Claude Code`);
     console.log(`    ${cyan}2)${reset} OpenCode`);
     console.log(`    ${cyan}3)${reset} Both`);
@@ -132,6 +136,57 @@ function showPlatformMenu() {
       if (choice === '1') resolve('claude');
       else if (choice === '2') resolve('opencode');
       else if (choice === '3') resolve('both');
+      else resolve('cancel');
+    });
+  });
+}
+
+function showScopeMenu(platform) {
+  return new Promise((resolve) => {
+    const readline = require('readline');
+
+    // Build path hints based on platform
+    const home = os.homedir();
+    const cwd = process.cwd();
+    let globalPaths, localPaths;
+
+    if (platform === 'both') {
+      globalPaths = `~/.claude/  and  ~/.config/opencode/`;
+      localPaths  = `./.claude/  and  ./.opencode/  ${dim}(in ${cwd})${reset}`;
+    } else if (platform === 'opencode') {
+      const globalDir = process.env.OPENCODE_CONFIG_DIR
+        ? (process.env.OPENCODE_CONFIG_DIR.startsWith('~/')
+            ? process.env.OPENCODE_CONFIG_DIR
+            : process.env.OPENCODE_CONFIG_DIR.replace(home, '~'))
+        : '~/.config/opencode/';
+      globalPaths = globalDir;
+      localPaths  = `./.opencode/  ${dim}(in ${cwd})${reset}`;
+    } else {
+      const globalDir = process.env.CLAUDE_CONFIG_DIR
+        ? (process.env.CLAUDE_CONFIG_DIR.startsWith('~/')
+            ? process.env.CLAUDE_CONFIG_DIR
+            : process.env.CLAUDE_CONFIG_DIR.replace(home, '~'))
+        : '~/.claude/';
+      globalPaths = globalDir;
+      localPaths  = `./.claude/  ${dim}(in ${cwd})${reset}`;
+    }
+
+    console.log('');
+    console.log(`  ${yellow}Step 2 of 2 — Choose scope:${reset}\n`);
+    console.log(`    ${cyan}1)${reset} Global  →  ${globalPaths}`);
+    console.log(`    ${cyan}2)${reset} Local   →  ${localPaths}`);
+    console.log(`    ${cyan}3)${reset} Cancel\n`);
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    rl.question(`  ${dim}Enter choice [1-3]:${reset} `, (answer) => {
+      rl.close();
+      const choice = answer.trim();
+      if (choice === '1') resolve('global');
+      else if (choice === '2') resolve('local');
       else resolve('cancel');
     });
   });
@@ -238,8 +293,9 @@ function transformForOpencode(content) {
     return '---\n---';
   });
 
-  // 2. Replace infra:audit/fix/status/update → infra-audit/fix/status/update
+  // 2. Replace infra:audit/fix/status/update/update-versions → infra-audit/fix/status/update/update-versions
   //    Covers all contexts: /infra:audit, `infra:audit`, plain text "infra:audit"
+  //    Note: infra:update-versions matches the infra:update branch, leaving "-versions" intact — correct result
   content = content.replace(/infra:(audit|fix|status|update)/g, 'infra-$1');
 
   return content;
@@ -253,7 +309,7 @@ const MANIFEST_NAME = 'infra-audit-manifest.json';
 const PATCHES_DIR_NAME = 'infra-audit-local-patches';
 
 // Command names (source files live at commands/infra/{name}.md)
-const COMMAND_NAMES = ['audit', 'fix', 'status', 'update'];
+const COMMAND_NAMES = ['audit', 'fix', 'status', 'update', 'update-versions'];
 
 // Files we install (relative to config dir) — Claude Code layout
 const OUR_FILES = [
@@ -261,11 +317,13 @@ const OUR_FILES = [
   'commands/infra/fix.md',
   'commands/infra/status.md',
   'commands/infra/update.md',
+  'commands/infra/update-versions.md',
   'infra/blueprint.md',
   'infra/blueprints/ci.yml',
   'infra/blueprints/renovate.yml',
   'infra/scripts/detect.sh',
   'infra/scripts/verify.sh',
+  'infra/versions.yml',
   'infra/VERSION',
   'hooks/infra-check-update.js',
   MANIFEST_NAME,
@@ -277,11 +335,13 @@ const OUR_FILES_OPENCODE = [
   'commands/infra-fix.md',
   'commands/infra-status.md',
   'commands/infra-update.md',
+  'commands/infra-update-versions.md',
   'infra/blueprint.md',
   'infra/blueprints/ci.yml',
   'infra/blueprints/renovate.yml',
   'infra/scripts/detect.sh',
   'infra/scripts/verify.sh',
+  'infra/versions.yml',
   'infra/VERSION',
   MANIFEST_NAME,
 ];
@@ -406,10 +466,9 @@ function install(isGlobal, isOpencode) {
       content = content.replace(/\.\/\.claude\//g, './.opencode/');
       // Transform frontmatter and command references
       content = transformForOpencode(content);
-      // update.md: rewrite installer flags for OpenCode
+      // update.md: rewrite --claude → --opencode for OpenCode context
       if (name === 'update') {
-        content = content.replace(/--global/g, '--opencode');
-        content = content.replace(/--local/g, '--opencode --local');
+        content = content.replace(/--claude/g, '--opencode');
       }
     }
 
@@ -450,7 +509,18 @@ function install(isGlobal, isOpencode) {
     failures.push('infra/blueprint.md');
   }
 
-  // ── 4. infra/scripts/*.sh ──
+  // ── 4. infra/versions.yml ──
+  const versionsSrc = path.join(src, 'infra', 'versions.yml');
+  const versionsDest = path.join(configDir, 'infra', 'versions.yml');
+  fs.copyFileSync(versionsSrc, versionsDest);
+  if (fs.existsSync(versionsDest)) {
+    console.log(`  ${green}✓${reset} Installed infra/versions.yml`);
+    installedFiles.push({ rel: 'infra/versions.yml', abs: versionsDest });
+  } else {
+    failures.push('infra/versions.yml');
+  }
+
+  // ── 5. infra/scripts/*.sh ──
   const scriptsDir = path.join(src, 'infra', 'scripts');
   const scriptsDest = path.join(configDir, 'infra', 'scripts');
   fs.mkdirSync(scriptsDest, { recursive: true });
@@ -469,7 +539,7 @@ function install(isGlobal, isOpencode) {
     }
   }
 
-  // ── 5. infra/VERSION ──
+  // ── 6. infra/VERSION ──
   const versionDest = path.join(configDir, 'infra', 'VERSION');
   fs.writeFileSync(versionDest, pkg.version);
   if (fs.existsSync(versionDest)) {
@@ -479,7 +549,7 @@ function install(isGlobal, isOpencode) {
     failures.push('infra/VERSION');
   }
 
-  // ── 6. hooks/infra-check-update.js (Claude Code only) ──
+  // ── 7. hooks/infra-check-update.js (Claude Code only) ──
   let hookDest;
   if (!isOpencode) {
     const hookSrc = path.join(src, 'hooks', 'infra-check-update.js');
@@ -563,18 +633,20 @@ function install(isGlobal, isOpencode) {
   ${green}Done!${reset} Launch OpenCode and run ${cyan}/infra-audit${reset}
 
   Other commands:
-    ${cyan}/infra-fix${reset}     — Auto-fix audit findings using parallel agents
-    ${cyan}/infra-status${reset}  — Check last audit/fix times and score
-    ${cyan}/infra-update${reset}  — Update to the latest version
+    ${cyan}/infra-fix${reset}             — Auto-fix audit findings using parallel agents
+    ${cyan}/infra-status${reset}          — Check last audit/fix times and score
+    ${cyan}/infra-update${reset}          — Update to the latest version
+    ${cyan}/infra-update-versions${reset} — Refresh blueprint version baselines
 `);
   } else {
     console.log(`
   ${green}Done!${reset} Launch Claude Code and run ${cyan}/infra:audit${reset}
 
   Other commands:
-    ${cyan}/infra:fix${reset}     — Auto-fix audit findings using parallel agents
-    ${cyan}/infra:status${reset}  — Check last audit/fix times and score
-    ${cyan}/infra:update${reset}  — Update to the latest version
+    ${cyan}/infra:fix${reset}             — Auto-fix audit findings using parallel agents
+    ${cyan}/infra:status${reset}          — Check last audit/fix times and score
+    ${cyan}/infra:update${reset}          — Update to the latest version
+    ${cyan}/infra:update-versions${reset} — Refresh blueprint version baselines
 `);
   }
 }
@@ -727,38 +799,49 @@ function uninstallBoth(isGlobal) {
 }
 
 async function main() {
-  const isGlobal = !hasLocal;
-
-  if (hasUninstall) {
-    if (hasBoth) {
-      uninstallBoth(isGlobal);
-    } else if (hasPlatformFlag || hasGlobal || hasLocal) {
-      uninstall(isGlobal, hasOpencode);
-    } else {
-      // No platform flag — show menu for uninstall too
-      const choice = await showPlatformMenu();
-      if (choice === 'cancel') {
+  // ── Step 1: Resolve platform ──
+  let platform;
+  if (hasBoth) {
+    platform = 'both';
+  } else if (hasClaude) {
+    platform = 'claude';
+  } else if (hasOpencode) {
+    platform = 'opencode';
+  } else {
+    // No platform flag — ask (unless this is a help/uninstall-only shortcut)
+    if (!hasUninstall || (!hasScopeFlag && !hasPlatformFlag)) {
+      platform = await showPlatformMenu();
+      if (platform === 'cancel') {
         console.log(`\n  ${dim}Cancelled.${reset}\n`);
         process.exit(0);
       }
-      console.log('');
-      if (choice === 'both') uninstallBoth(isGlobal);
-      else uninstall(isGlobal, choice === 'opencode');
     }
-  } else if (hasBoth) {
-    installBoth(isGlobal);
-  } else if (hasPlatformFlag || hasGlobal || hasLocal) {
-    install(isGlobal, hasOpencode);
+  }
+
+  // ── Step 2: Resolve scope ──
+  let isGlobal;
+  if (hasGlobal) {
+    isGlobal = true;
+  } else if (hasLocal) {
+    isGlobal = false;
   } else {
-    // No flags at all — interactive menu
-    const choice = await showPlatformMenu();
-    if (choice === 'cancel') {
+    const scope = await showScopeMenu(platform);
+    if (scope === 'cancel') {
       console.log(`\n  ${dim}Cancelled.${reset}\n`);
       process.exit(0);
     }
-    console.log('');
-    if (choice === 'both') installBoth(isGlobal);
-    else install(isGlobal, choice === 'opencode');
+    isGlobal = scope === 'global';
+  }
+
+  console.log('');
+
+  // ── Execute ──
+  if (hasUninstall) {
+    if (platform === 'both') uninstallBoth(isGlobal);
+    else uninstall(isGlobal, platform === 'opencode');
+  } else {
+    if (platform === 'both') installBoth(isGlobal);
+    else install(isGlobal, platform === 'opencode');
   }
 }
 

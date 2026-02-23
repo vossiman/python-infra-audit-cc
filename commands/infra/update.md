@@ -39,15 +39,15 @@ Tell the user what version they're updating from/to.
 
 ## Step 4: Run the update
 
-Determine install type from where the VERSION file was found:
-- If found at `./.claude/infra/VERSION` → local install → use `--local`
-- If found at `~/.claude/infra/VERSION` → global install → use `--global`
+Determine install scope from where the VERSION file was found:
+- If found at `./.claude/infra/VERSION` → local install → use `--claude --local`
+- If found at `~/.claude/infra/VERSION` → global install → use `--claude --global`
 
 Run:
 ```bash
-npx python-infra-audit-cc@latest --global
+npx python-infra-audit-cc@latest --claude --global
 ```
-(or `--local` as appropriate)
+(or `--claude --local` as appropriate)
 
 The installer preserves `infra/history/` — audit history is never overwritten or deleted by updates.
 

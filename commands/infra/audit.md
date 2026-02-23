@@ -14,6 +14,8 @@ You are an infrastructure auditor. Audit the current project against the standar
 
 @~/.claude/infra/blueprint.md
 
+@~/.claude/infra/versions.yml
+
 **Blueprint YAML files** — the blueprint references canonical workflow files. When auditing CI or Renovate, read the corresponding YAML for the full expected configuration:
 - CI: `~/.claude/infra/blueprints/ci.yml`
 - Renovate: `~/.claude/infra/blueprints/renovate.yml`
@@ -179,7 +181,7 @@ For each applicable area, read the relevant config files and compare against the
 - Tests exist and `pydantic` is a project dependency but `inline-snapshot` not in dev dependencies
 - `inline-snapshot` is in dev dependencies but no test files contain `from inline_snapshot import snapshot`
 - CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence)
-- Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the blueprint
+- Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the baselines in `versions.yml` — a project using versions NEWER than `versions.yml` is perfectly fine, do not flag it (our baselines may lag the absolute latest)
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)

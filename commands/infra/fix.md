@@ -17,6 +17,8 @@ You are an infrastructure fixer. Your job is to resolve findings from an `infra:
 
 @~/.claude/infra/blueprint.md
 
+@~/.claude/infra/versions.yml
+
 **Blueprint YAML files** — when fixing CI or Renovate, use these canonical workflows as the source of truth:
 - CI: `~/.claude/infra/blueprints/ci.yml`
 - Renovate: `~/.claude/infra/blueprints/renovate.yml`
@@ -212,7 +214,7 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 5. Add vulture pre-commit hook to `.pre-commit-config.yaml`:
    ```yaml
      - repo: https://github.com/jendrikseipp/vulture
-       rev: v2.14  # [ADAPT] match installed vulture version
+        rev: v2.14  # [ADAPT] match installed vulture version — see versions.yml for baseline
        hooks:
          - id: vulture
    ```

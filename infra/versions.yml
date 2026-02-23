@@ -1,0 +1,49 @@
+# infra/versions.yml — single source of truth for blueprint-recommended versions
+# Last updated: 2026-02-23
+#
+# These are BASELINES, not ceilings. A project using a NEWER version than
+# listed here is perfectly fine — only flag projects that are significantly
+# BEHIND these baselines (e.g. >1 major version for GitHub Actions).
+#
+# Our own baselines may lag slightly behind the absolute latest release —
+# that is acceptable. Never flag a project for being ahead of us.
+#
+# Run /infra:update-versions to refresh these against upstream releases.
+# That command updates this file and syncs all downstream files below.
+#
+# When updating manually, sync changes to:
+#   - infra/blueprints/ci.yml        (actions: checkout, setup-python, setup-node)
+#   - infra/blueprints/renovate.yml  (actions: checkout, setup-uv; actions-pinned: renovatebot-github-action)
+#   - infra/blueprint.md             (pre-commit code examples, tool version floors)
+#   - commands/infra/fix.md          (vulture version in recipe snippets)
+
+# --- GitHub Actions (floating major tags, e.g. @v6 tracks latest v6.x.x) ---
+actions:
+  checkout: v6              # actions/checkout
+  setup-python: v6          # actions/setup-python
+  setup-node: v6            # actions/setup-node
+  setup-uv: v7              # astral-sh/setup-uv
+
+# --- GitHub Actions (exact pins — no floating major tag exists for these) ---
+actions-pinned:
+  renovatebot-github-action: v46.0.2   # renovatebot/github-action
+
+# --- Pre-commit hook revs ---
+pre-commit:
+  pre-commit-hooks: v6.0.0  # pre-commit/pre-commit-hooks
+  ruff-pre-commit: v0.15.2  # astral-sh/ruff-pre-commit
+  vulture: v2.14            # jendrikseipp/vulture
+
+# --- Tool version floors (pyproject.toml [project.optional-dependencies] dev) ---
+tools:
+  ruff: ">=0.15.2"
+  pre-commit: ">=4.2.0"
+  pytest: ">=7.0"
+  vulture: ">=2.14"
+
+# --- Runtime versions used in CI blueprints ---
+# Note: python and node are [ADAPT] — projects choose their own.
+# These are the values used in the CI blueprint as illustrative defaults.
+runtime:
+  python: "3.14"
+  node: "20"

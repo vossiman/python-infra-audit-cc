@@ -3,6 +3,8 @@
 Standards reference for auditing Python project infrastructure.
 Values are extracted from a production monorepo. Items marked `[ADAPT]` are version/project-specific and should be adjusted per project.
 
+**Version baselines:** All recommended tool and action versions are maintained in `infra/versions.yml` — the single source of truth. The examples in this document reflect those baselines. Run `/infra:update-versions` to refresh baselines against upstream releases.
+
 ---
 
 ## 1. Ruff (Linter + Formatter)
@@ -104,7 +106,7 @@ Some ORMs (SQLAlchemy, SQLModel) produce false positives. It's acceptable to dis
 ```yaml
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0  # [ADAPT] use latest stable
+    rev: v6.0.0  # [ADAPT] use latest stable
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -114,7 +116,7 @@ repos:
       - id: check-json
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13  # [ADAPT] match project ruff version
+    rev: v0.15.2  # [ADAPT] match project ruff version
     hooks:
       - id: ruff
         args: [--fix]
@@ -230,7 +232,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "ruff>=0.14.11",        # [ADAPT] use latest
+    "ruff>=0.15.2",         # [ADAPT] use latest
     "pre-commit>=4.2.0",    # [ADAPT] use latest
 ]
 

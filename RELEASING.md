@@ -27,16 +27,19 @@ git push && git push --tags
 
 ## Local dev testing
 
-Run the installer directly from the repo to install your working copy:
+Run the installer directly from the repo to install your working copy. Use explicit flags to skip the interactive menu:
 
 ```bash
-node bin/install.js --global
+node bin/install.js --claude --global    # Claude Code → ~/.claude/
+node bin/install.js --opencode --global  # OpenCode → ~/.config/opencode/
+node bin/install.js --both --global      # Both at once
 ```
 
-Re-run after any source file changes to update `~/.claude/`.
+Re-run after any source file changes to update the installed files.
 
 ## Uninstall (for testing)
 
 ```bash
-node bin/install.js --global --uninstall
+node bin/install.js --claude --global --uninstall
+node bin/install.js --opencode --global --uninstall
 ```

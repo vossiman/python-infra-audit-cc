@@ -65,5 +65,5 @@ Initial release.
 - Additive `settings.json` merge (coexists with GSD and other skills)
 - Local patch backup on update
 - SHA256 file manifest for modification detection
-- `--global` (default) and `--local` install modes
+- `--global` and `--local` scope flags
 - `--uninstall` for clean removal
