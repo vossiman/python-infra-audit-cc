@@ -148,6 +148,8 @@ For each applicable area, read the relevant config files and compare against the
 - `vulture.finding_count > 10` — significant dead code detected (maintainability concern)
 - `vulture_precommit == false` when `vulture` is in `venv_tools` and pre-commit config exists — dead code checks won't run on commit
 - `vulture_config == false` when `vulture` is in `venv_tools` — no `[tool.vulture]` in pyproject.toml (config inconsistency risk; pre-commit hook requires it)
+
+**WARNING** (from detection JSON — `detect.vulture.has_dep`):
 - `vulture.has_dep == false` when `vulture` is in `venv_tools` — vulture installed in venv but not in pyproject.toml dev dependencies (won't survive `uv sync`)
 
 **INFO** (from verify.sh results):

@@ -214,7 +214,7 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 5. Add vulture pre-commit hook to `.pre-commit-config.yaml`:
    ```yaml
      - repo: https://github.com/jendrikseipp/vulture
-        rev: v2.14  # [ADAPT] match installed vulture version — see versions.yml for baseline
+       rev: v2.14  # [ADAPT] match installed vulture version — see versions.yml for baseline
        hooks:
          - id: vulture
    ```
@@ -271,7 +271,7 @@ If any fixes failed or the score didn't improve as expected, list what went wron
 
 ### Update audit history
 
-After validation, update the audit history file using the same filename and migration logic as `infra:audit` Phase 4.
+After validation, update the audit history file using the same filename and migration logic as `infra:audit` Phase 3.
 
 **Filename with path hash:**
 ```bash
@@ -284,7 +284,7 @@ LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
 **Read existing history:**
 1. If `$HISTORY_FILE` exists, read it and extract the `runs` array
 2. Else if `$LEGACY_FILE` exists, read it instead (v1 migration)
-3. If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra:audit` Phase 4)
+3. If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra:audit` Phase 3)
 4. If no file exists, start with an empty `runs` array
 
 **Append current run** — add a new entry with `"type": "fix"`:
@@ -294,7 +294,7 @@ LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
 
 If `runs` has more than 50 entries after appending, drop the oldest to keep only the last 50.
 
-**Write schema v2 JSON** — same format as `infra:audit` Phase 4, but also set the `last_fix` field:
+**Write schema v2 JSON** — same format as `infra:audit` Phase 3, but also set the `last_fix` field:
 ```json
 {
   "schema_version": 2,

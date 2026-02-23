@@ -44,6 +44,7 @@ npx python-infra-audit-cc --both --global
 /infra:fix warnings    # Fix only warnings
 
 /infra:status          # Show last audit/fix score and trend
+/infra:update          # Update the skill to the latest version
 
 /infra:update-versions # Refresh blueprint version baselines against upstream releases
 ```
@@ -60,6 +61,7 @@ npx python-infra-audit-cc --both --global
 /infra-fix warnings    # Fix only warnings
 
 /infra-status          # Show last audit/fix score and trend
+/infra-update          # Update the skill to the latest version
 
 /infra-update-versions # Refresh blueprint version baselines against upstream releases
 ```
@@ -82,6 +84,8 @@ npx python-infra-audit-cc --both --global
 | **tests** | Test structure, coverage config, pytest setup, inline-snapshot usage |
 | **renovate** | Renovate config presence, workflow setup, token configuration |
 | **claude-md** | CLAUDE.md presence, project context, commands documented |
+| **git** | Git repo present (structural prerequisite) |
+| **venv** | `.venv` present and usable (structural prerequisite) |
 
 ## Output
 

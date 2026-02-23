@@ -116,11 +116,18 @@ On confirmation, update files in this order:
 **`~/.claude/infra/blueprint.md`** — update pre-commit example revs and tool floors:
 - `pre-commit/pre-commit-hooks` rev
 - `astral-sh/ruff-pre-commit` rev
+- vulture pre-commit hook rev (appears twice — in the optional hooks section and the dead code section)
 - ruff `>=` floor in pyproject.toml example
+- pre-commit `>=` floor in pyproject.toml example
+- pytest `>=` floor in pyproject.toml example
+- vulture `>=` floor in pyproject.toml example
 
-**`~/.claude/infra/commands/infra/fix.md`** (or `commands/infra-fix.md` for OpenCode) — update vulture version in recipe snippets:
-- `vulture>=x.y` in pyproject.toml dev-dependencies example
-- `rev: vx.y` in pre-commit hook recipe
+**`fix.md`** — update vulture version in recipe snippets. Resolve the path from your install location:
+- Claude Code global: `~/.claude/commands/infra/fix.md`
+- Claude Code local: `.claude/commands/infra/fix.md`
+- OpenCode global: `~/.config/opencode/commands/infra-fix.md`
+- Update: `vulture>=x.y` in pyproject.toml dev-dependencies example
+- Update: `rev: vx.y` in pre-commit hook recipe
 
 ### 5c. Do NOT auto-commit
 
