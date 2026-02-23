@@ -174,6 +174,37 @@ At minimum: a lint job and a test job, triggered on PRs.
 - **Post-upgrade commands**: `make sync-locks` regenerates per-project lock files after dependency bumps
 - **`[ADAPT]`**: Action versions (`renovatebot/github-action`, `astral-sh/setup-uv`) should track latest stable
 
+### Required PAT permissions for `RENOVATE_TOKEN`
+
+Create a fine-grained personal access token with the following permissions (repository-scoped):
+
+| Permission | Level |
+|---|---|
+| Contents | Read and write |
+| Pull requests | Read and write |
+| Workflows | Read and write |
+| Metadata | Read-only (auto-granted) |
+| Issues | Read and write |
+| Commit statuses | Read and write |
+| Dependabot alerts | Read-only |
+
+> **Note:** Contents, Pull requests, and Workflows are the obvious ones. Issues, Commit statuses, and Dependabot alerts are easy to miss but required for Renovate to function correctly.
+
+### Branch strategy
+
+Renovate should target a **`develop`** or **`test`** branch rather than `main`. This keeps dependency update churn out of your release branch and gives you a staging area to validate updates before promoting them.
+
+**Recommended setup:**
+- Maintain a `develop` or `test` branch as the default Renovate target
+- Renovate opens PRs against those branches — CI runs there, you review and merge
+- Promote `develop`/`test` → `main` via a deliberate PR or release cycle when ready
+- Set `"baseBranchPatterns": ["develop", "test"]` in `renovate.json` — Renovate will target whichever branches exist. **`[ADAPT]`** if your branch is named differently
+
+**Why not target `main` directly?**
+- In multi-project / monorepo setups, a bad transitive dependency can cascade — `develop` limits the blast radius
+- Batching dependency updates before promoting to `main` gives you a clean integration checkpoint
+- Trunk-based teams that release via tags on `main` _can_ set `"baseBranches": ["main"]`, but should be aware that every Renovate merge lands directly on the release branch
+
 ### Minimum acceptable config
 A `renovate.json` with sensible defaults and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift.
 
