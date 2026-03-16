@@ -1,15 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:best-practices",
+    ":maintainLockFilesMonthly"
+  ],
   "baseBranchPatterns": ["develop", "test"],
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
   "prHourlyLimit": 0,
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "GitHub Actions: pin digests for supply-chain security, no automerge",
+      "description": "GitHub Actions: no automerge (review digest and version bumps)",
       "matchManagers": ["github-actions"],
-      "pinDigests": true,
       "automerge": false
     },
     {
@@ -21,6 +24,11 @@
       "description": "Pre-commit hooks: no automerge (review rev bumps)",
       "matchManagers": ["pre-commit"],
       "automerge": false
+    },
+    {
+      "description": "PyPI: 3-day stability gate against broken/malicious releases",
+      "matchDatasources": ["pypi"],
+      "minimumReleaseAge": "3 days"
     }
   ]
 }

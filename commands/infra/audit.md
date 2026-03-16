@@ -163,6 +163,7 @@ For each applicable area, read the relevant config files and compare against the
 - ruff configured but missing complexity rules (`C901`, `PLR0913`, `PLR0912`, `PLR0915`) or missing `[tool.ruff.lint.mccabe]` / `[tool.ruff.lint.pylint]` thresholds
 - No type checker configured (pyright or mypy)
 - pre-commit hooks missing `ruff-format` (lint without format)
+- pre-commit hooks missing `detect-private-key` (no last-resort secret leak prevention)
 - CI exists but doesn't run linting
 - CI exists but doesn't run tests
 - `pyproject.toml` missing `requires-python`
@@ -180,6 +181,9 @@ For each applicable area, read the relevant config files and compare against the
 - Renovate config exists but `rangeStrategy` is not `"bump"` for Python deps (`pep621` manager) — version range floors in `pyproject.toml` (e.g. `ruff>=0.15.2`) won't be bumped automatically, they silently go stale
 - Renovate config exists but `pinDigests` is not enabled for GitHub Actions — action refs use mutable tags instead of SHA-pinned digests (supply chain risk). Only flag this when Renovate is actually configured (pinDigests without Renovate is impractical)
 - Renovate schedule is monthly (or less frequent) but `prHourlyLimit` is not `0` — updates will be drip-fed across months instead of delivered in one batch. Either set `prHourlyLimit: 0` or increase schedule frequency
+- Renovate config exists but does not extend `config:best-practices` (or at minimum `config:recommended`) — missing config migration, abandonment detection, and lock file maintenance
+- Renovate config exists but `osvVulnerabilityAlerts` is not enabled — free vulnerability scanning left on the table
+- Renovate config exists with Python deps but no `minimumReleaseAge` for PyPI datasource — no stability gate against broken/malicious releases
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
@@ -187,6 +191,7 @@ For each applicable area, read the relevant config files and compare against the
 - `inline-snapshot` is in dev dependencies but no test files contain `from inline_snapshot import snapshot`
 - CI `python-version` doesn't match local `.venv` Python version (dev/CI divergence)
 - Renovate or CI workflow uses GitHub Actions versions more than 1 major version behind the baselines in `versions.yml` — a project using versions NEWER than `versions.yml` is perfectly fine, do not flag it (our baselines may lag the absolute latest)
+- Pre-commit hook revs more than 1 major version behind baselines in `versions.yml` (e.g. `pre-commit-hooks` at `v4.x` when baseline is `v6.x`) — same logic as GH Actions version check: newer than baseline is fine, don't flag it
 
 ### INFO triggers (suggestions)
 - ruff `line-length` differs from 120 (legitimate preference)

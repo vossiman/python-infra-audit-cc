@@ -114,6 +114,9 @@ repos:
       - id: check-added-large-files
       - id: check-toml
       - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-case-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.6  # [ADAPT] match project ruff version
@@ -135,12 +138,12 @@ repos:
 **Note:** The vulture hook scans the entire project (not just changed files). It reads `[tool.vulture]` from `pyproject.toml` for paths, excludes, and suppression rules. Configure `[tool.vulture]` before adding this hook.
 
 ### Rationale
-- **6 file-hygiene hooks**: Catch whitespace issues, malformed configs, and accidentally committed large files before they hit the repo
+- **9 file-hygiene hooks**: Catch whitespace issues, malformed configs, accidentally committed large files, leftover merge conflict markers, private keys, and case-insensitive filename collisions before they hit the repo
 - **ruff + ruff-format**: Lint and format in pre-commit ensures CI will pass — no "forgot to format" failures
 - **`--fix` on ruff**: Auto-fixes safe issues (import sorting, unused imports) on commit
 
 ### Minimum acceptable hooks
-At minimum: `trailing-whitespace`, `end-of-file-fixer`, and the ruff hooks.
+At minimum: `trailing-whitespace`, `end-of-file-fixer`, `detect-private-key`, and the ruff hooks.
 
 ---
 
@@ -212,16 +215,19 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
 ```json
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:best-practices",       // [ADAPT] use config:recommended if best-practices is too opinionated
+    ":maintainLockFilesMonthly"    // match our monthly schedule (best-practices defaults to weekly)
+  ],
   "baseBranchPatterns": ["develop", "test"],  // [ADAPT] match your branch names
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
   "prHourlyLimit": 0,
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "GitHub Actions: pin digests for supply-chain security, no automerge",
+      "description": "GitHub Actions: no automerge (review digest and version bumps)",
       "matchManagers": ["github-actions"],
-      "pinDigests": true,
       "automerge": false
     },
     {
@@ -233,6 +239,11 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
       "description": "Pre-commit hooks: no automerge (review rev bumps)",
       "matchManagers": ["pre-commit"],
       "automerge": false
+    },
+    {
+      "description": "PyPI: 3-day stability gate against broken/malicious releases",
+      "matchDatasources": ["pypi"],
+      "minimumReleaseAge": "3 days"
     }
   ]
 }
@@ -250,9 +261,9 @@ This means `>=` version floors silently go stale. With `"bump"`, Renovate propos
 
 ### Why `pinDigests` for GitHub Actions
 
-Without `pinDigests`, action refs like `actions/checkout@v6` use a mutable Git tag. A compromised tag can be force-pushed to point at malicious code. With `pinDigests: true`, Renovate converts refs to SHA-pinned form (`actions/checkout@<sha> # v6`) and keeps them updated automatically. This is the [GitHub-recommended supply-chain security practice](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
+Without digest pinning, action refs like `actions/checkout@v6` use a mutable Git tag. A compromised tag can be force-pushed to point at malicious code. With digest pinning, Renovate converts refs to SHA-pinned form (`actions/checkout@<sha> # v6`) and keeps them updated automatically. This is the [GitHub-recommended supply-chain security practice](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
 
-**Note:** `pinDigests` is only practical when Renovate is running — otherwise you'd be stuck maintaining SHAs by hand.
+**Note:** `config:best-practices` includes `helpers:pinGitHubActionDigests` which handles this automatically — no manual `pinDigests: true` rule needed. Digest pinning is only practical when Renovate is running — otherwise you'd be stuck maintaining SHAs by hand.
 
 ### Why `prHourlyLimit: 0` for monthly schedules
 
@@ -266,8 +277,31 @@ With a monthly schedule, the schedule itself is the throttle. Set `prHourlyLimit
 | Weekly | `2` is fine — catches up within a week |
 | Monthly | `0` — otherwise updates drip-feed across months |
 
+### Why `config:best-practices` over `config:recommended`
+
+`config:best-practices` is a strict superset of `config:recommended`. It adds:
+- **Config migration** — auto-PRs when `renovate.json` uses deprecated syntax
+- **Abandonment detection** — flags packages that are no longer maintained
+- **Docker digest pinning** — SHA-pins Docker base images (if project uses Docker)
+- **GitHub Action digest pinning** — SHA-pins action refs (overlaps with manual `pinDigests` rule, so we drop the manual one)
+- **Lock file maintenance** — periodically regenerates lock files to pick up transitive dep updates
+
+The JS-specific additions (`:pinDevDependencies`, `security:minimumReleaseAgeNpm`) are harmless for Python — they simply won't match anything.
+
+### Why `osvVulnerabilityAlerts`
+
+Queries the [OSV.dev](https://osv.dev/) database to flag known vulnerabilities in dependencies. Works with PyPI. Free, no GitHub Advisory Database dependency. Renovate raises priority PRs for vulnerable packages. Zero config beyond enabling it.
+
+### Why `minimumReleaseAge` for PyPI
+
+Delays PR creation until a PyPI package has been published for at least 3 days. This guards against:
+- **Malicious releases** — supply chain attacks that get yanked within hours
+- **Broken releases** — packages with critical bugs that get patched quickly
+
+`config:best-practices` includes this for npm (`security:minimumReleaseAgeNpm`) but not for PyPI, so we add our own via `packageRules`.
+
 ### Minimum acceptable config
-A `renovate.json` with sensible defaults, `rangeStrategy: "bump"` for Python deps, `prHourlyLimit: 0` for monthly schedules, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
+A `renovate.json` extending `config:best-practices`, with `rangeStrategy: "bump"` for Python deps, `prHourlyLimit: 0` for monthly schedules, `osvVulnerabilityAlerts`, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
 
 ---
 

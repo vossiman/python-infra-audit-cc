@@ -240,14 +240,20 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 **renovate config** (when renovate config is missing or incomplete):
 1. Create `renovate.json` (or update existing) using the recommended config from the blueprint's "Recommended `renovate.json`" section
 2. Key settings to ensure are present:
-   - `"extends": ["config:recommended"]` — sensible defaults
+   - `"extends": ["config:best-practices", ":maintainLockFilesMonthly"]` — full best-practices baseline with monthly lock file maintenance
    - `"baseBranchPatterns"` — should target `develop`/`test`, not `main` directly. **`[ADAPT]`** to the project's actual branch names
    - `rangeStrategy: "bump"` in a `packageRules` entry matching `pep621` manager — ensures `>=` floors get bumped
-   - `pinDigests: true` in a `packageRules` entry matching `github-actions` manager — SHA-pins action refs
    - `automerge: false` for `github-actions` and `pre-commit` managers — these should be reviewed
    - `prHourlyLimit: 0` when using a monthly schedule — prevents updates from being drip-fed across months
+   - `osvVulnerabilityAlerts: true` — free PyPI vulnerability scanning
+   - `minimumReleaseAge: "3 days"` for `pypi` datasource — stability gate against broken/malicious releases
 3. Ensure `.github/workflows/renovate.yml` exists (use the blueprint workflow as reference)
 4. Verify JSON: `python3 -c "import json; json.load(open('renovate.json')); print('valid')"`
+
+**pre-commit hook revs** (when hook revs are behind baselines):
+- If Renovate is configured with `pre-commit` manager: trigger a Renovate run (`workflow_dispatch`) or wait for next scheduled run — Renovate will propose rev bump PRs
+- If no Renovate: run `pre-commit autoupdate` to bump all hooks, or `pre-commit autoupdate --repo <url>` for a specific hook
+- After updating: run `pre-commit run --all-files` to verify no hooks break with the new versions
 
 For all other areas (ruff, pyright, CI, renovate, etc.), create/update the config file using the blueprint as reference.
 
