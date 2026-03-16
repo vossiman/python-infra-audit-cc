@@ -28,9 +28,9 @@ The user may optionally limit scope: `$ARGUMENTS`
 
 ---
 
-## Phase 1: Audit
+## Phase 1: Load or Run Audit
 
-First, read the reference files and run detection in parallel (single message, multiple Bash calls):
+First, read the reference files (single Bash call):
 
 **Bash call 1 — read reference files:**
 ```bash
@@ -41,35 +41,68 @@ cat ~/.claude/infra/blueprints/renovate.yml
 ```
 This is silent bookkeeping — parse and retain the standards, do not echo to the user.
 
-**Bash call 2 — run detection:**
+**Check for existing audit data:**
+
 ```bash
-DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+if [ -f .infra-audit/findings.json ] && [ -f .infra-audit/detect.json ]; then
+  echo "AUDIT_EXISTS"
+  cat .infra-audit/findings.json
+  cat .infra-audit/detect.json
+else
+  echo "NO_AUDIT"
+fi
+```
+
+Ensure `.infra-audit/` is gitignored (idempotent — safe to run even if entry already exists):
+```bash
+grep -qxF ".infra-audit/" .gitignore 2>/dev/null || echo ".infra-audit/" >> .gitignore
+```
+
+**If `AUDIT_EXISTS`:** Parse the findings and detection JSON. These were saved by a previous `/infra-audit` or `/infra-fix` run. Skip detection and verification — use the persisted data directly:
+
+1. Parse `findings.json` — filter to findings with `"status": "open"` only. Skip any already marked `"fixed"`.
+2. Parse `detect.json` — retain the detection context for sub-agents and fix recipes.
+3. Note the audit date from `findings.json` for the summary.
+
+If only one of the two files exists (e.g., `findings.json` without `detect.json`), treat the data as incomplete and fall through to the `NO_AUDIT` branch to re-detect from scratch.
+
+**If `NO_AUDIT`:** Run detection and verification from scratch:
+
+```bash
+AUDIT_TMPDIR=".infra-audit"
+mkdir -p "$AUDIT_TMPDIR"
+DETECT_JSON="$AUDIT_TMPDIR/detect.json"
 bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
 ```
 
 **If detect.sh exits non-zero or the output file is empty/missing, stop immediately** with an error message: "Detection failed — cannot proceed with fix." Do not continue to verification or fix phases.
 
-Parse the detection JSON (read via `cat "$DETECT_JSON"` — silent bookkeeping), then run CI verification:
+Parse the detection JSON (read via `cat .infra-audit/detect.json` — silent bookkeeping), then run CI verification:
 ```bash
-VERIFY_JSON="/tmp/infra-verify-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+AUDIT_TMPDIR=".infra-audit"
+DETECT_JSON="$AUDIT_TMPDIR/detect.json"
+VERIFY_JSON="$AUDIT_TMPDIR/verify.json"
 bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON" > "$VERIFY_JSON" && echo "verify.sh complete"
 ```
 
-Read the verification results via `cat "$VERIFY_JSON"` (silent bookkeeping).
+Read the verification results via `cat .infra-audit/verify.json` (silent bookkeeping).
 
 Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra:audit`.
 
-Do NOT output the full audit report. Instead, collect the findings into a structured list you'll use in Phase 2.
+Save findings locally using the same `findings.json` schema as defined in `infra:audit` Phase 3 — all findings with `"status": "open"`. Write using Bash heredoc (silent bookkeeping).
 
-Print a brief summary:
+**Both branches converge here.** Do NOT output the full audit report. Instead, collect the findings into a structured list you'll use in Phase 2.
+
+Print a brief summary (for both reused and fresh audit data):
 ```
 ━━━ INFRA FIX ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Found: {n} critical, {n} warnings, {n} info
   Fixing: {describe scope based on $ARGUMENTS}
 ```
+If reusing existing audit data, add a line: `  Using audit from {date}` (from findings.json `date` field).
 
-If the audit finds 0 fixable issues, print "Nothing to fix — project scores 10/10." and stop.
+If 0 open/fixable findings remain, print "Nothing to fix — project scores 10/10." and stop.
 
 ---
 
@@ -162,6 +195,22 @@ Each fix must:
 4. **Be atomic** — each fix should result in a valid, working config file. No partial writes.
 5. **Never delete user content** — when adding to existing files (like adding ruff rules to `pyproject.toml`), merge with existing config, don't replace it
 6. **Use the project's local Python environment** — see "Running Python tools and commands" above. Never use globally installed tools.
+
+### Post-wave verification
+
+After each wave completes (all fixes in the wave applied), re-run **both** detection and verification. Detection must be re-run because fixes may have added new infrastructure (e.g., a new `.pre-commit-config.yaml`), and verify.sh reads detect.json to decide what to check — stale detection data would cause it to skip verification of newly-added areas.
+
+```bash
+AUDIT_TMPDIR=".infra-audit"
+DETECT_JSON="$AUDIT_TMPDIR/detect.json"
+VERIFY_JSON="$AUDIT_TMPDIR/verify.json"
+bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
+bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON" > "$VERIFY_JSON" && echo "verify.sh complete"
+```
+
+Read the updated detection and verification results (`cat .infra-audit/detect.json` and `cat .infra-audit/verify.json` — silent bookkeeping). For each finding that is now resolved, update its `status` to `"fixed"` in the in-memory findings list.
+
+**Update `.infra-audit/findings.json`** after each wave (silent bookkeeping — use Bash heredoc). Write the full findings array with updated statuses. This ensures progress is persisted even if the session is interrupted between waves.
 
 ### Specific fix recipes
 
@@ -298,6 +347,12 @@ After all waves complete, re-run the audit logic and print a before/after summar
 
 If any fixes failed or the score didn't improve as expected, list what went wrong and suggest manual steps.
 
+### Update local findings
+
+Update `.infra-audit/findings.json` with the final state — all successfully fixed findings marked as `"fixed"`, remaining findings keep `"open"` status. Update the top-level `score`, `critical`, `warnings`, `info` counts to reflect the post-fix state. Update `date` to today.
+
+Write using Bash heredoc (silent bookkeeping).
+
 ### Update audit history
 
 After validation, update the audit history file using the same filename and migration logic as `infra:audit` Phase 3.
@@ -350,7 +405,7 @@ If `runs` has more than 50 entries after appending, drop the oldest to keep only
 
 **Cleanup:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove it after writing.
 
-**Cleanup temp files:** Remove `$DETECT_JSON` and `$VERIFY_JSON` after the fix completes.
+**Keep `.infra-audit/`:** Do NOT delete the `.infra-audit/` directory — it persists between runs. The updated `findings.json` reflects which findings are fixed and which remain open.
 
 **IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. This is silent bookkeeping — do not print anything about it to the user.
 

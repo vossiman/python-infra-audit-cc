@@ -41,11 +41,14 @@ This is silent bookkeeping — parse and retain the standards, do not echo to th
 
 **Bash call 2 — run detection:**
 ```bash
-DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+AUDIT_TMPDIR=".infra-audit"
+mkdir -p "$AUDIT_TMPDIR"
+grep -qxF "$AUDIT_TMPDIR/" .gitignore 2>/dev/null || echo "$AUDIT_TMPDIR/" >> .gitignore
+DETECT_JSON="$AUDIT_TMPDIR/detect.json"
 bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
 ```
 
-Read the detection results from the temp file using Bash (`cat "$DETECT_JSON"`) — this is silent bookkeeping, not user-facing output.
+Read the detection results from the temp file using Bash (`cat .infra-audit/detect.json`) — this is silent bookkeeping, not user-facing output.
 
 The JSON contains: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
 
@@ -74,11 +77,13 @@ Launch ALL of the following in a **single message** (parallel tool calls):
 ### 2a. CI Verification (Bash)
 
 ```bash
-VERIFY_JSON="/tmp/infra-verify-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+AUDIT_TMPDIR=".infra-audit"
+DETECT_JSON="$AUDIT_TMPDIR/detect.json"
+VERIFY_JSON="$AUDIT_TMPDIR/verify.json"
 bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON" > "$VERIFY_JSON" && echo "verify.sh complete"
 ```
 
-This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection. Results are saved to `$VERIFY_JSON` — read them later with `cat "$VERIFY_JSON"` (silent bookkeeping).
+This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection. Results are saved to `.infra-audit/verify.json` — read them later with `cat .infra-audit/verify.json` (silent bookkeeping).
 
 ### 2b. Area Audit Agents (Task — one per detected area)
 
@@ -242,7 +247,7 @@ For each applicable area, read the relevant config files and compare against the
 
 Read the verification results using Bash:
 ```bash
-cat "$VERIFY_JSON"
+cat .infra-audit/verify.json
 ```
 This is silent bookkeeping — do not echo raw JSON to the user. (Detection results were already parsed in Phase 1.)
 
@@ -354,6 +359,36 @@ If score < 5.0:
 - Each finding must include a concrete, copy-pasteable fix (command, config snippet, or file to create)
 - If a CRITICAL finding has a one-liner fix, include the exact command
 
+### Save findings locally
+
+After outputting the report, persist the structured findings to `.infra-audit/` so `/infra-fix` can reuse them without re-auditing.
+
+**Write `.infra-audit/findings.json`** using Bash (silent bookkeeping — do not print to user):
+```bash
+cat <<'EOF' > .infra-audit/findings.json
+{
+  "date": "{today}",
+  "score": {score},
+  "critical": {critical_count},
+  "warnings": {warning_count},
+  "info": {info_count},
+  "findings": [
+    {
+      "severity": "CRITICAL|WARNING|INFO",
+      "area": "{area}",
+      "description": "{short description}",
+      "current": "{what was found}",
+      "expected": "{what blueprint recommends}",
+      "fix": "{actionable fix}",
+      "status": "open"
+    }
+  ]
+}
+EOF
+```
+
+Every finding from the report must appear in the `findings` array with `"status": "open"`. These are template variables — fill them from the actual audit results at runtime. This file is the bridge between `/infra-audit` and `/infra-fix`.
+
 ### Save audit history
 
 After outputting the report, persist the results so future sessions have context on what was audited and when.
@@ -415,4 +450,4 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 
 **Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
 
-**Cleanup temp files:** Remove `$DETECT_JSON` and `$VERIFY_JSON` after the audit completes.
+**Keep `.infra-audit/`:** Do NOT delete the `.infra-audit/` directory — it persists between runs so `/infra-fix` can reuse the detection and findings data.
