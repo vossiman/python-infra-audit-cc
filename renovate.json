@@ -4,6 +4,7 @@
   "baseBranchPatterns": ["develop", "test"],
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
+  "prHourlyLimit": 0,
   "packageRules": [
     {
       "description": "GitHub Actions: pin digests for supply-chain security, no automerge",

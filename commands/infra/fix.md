@@ -245,6 +245,7 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
    - `rangeStrategy: "bump"` in a `packageRules` entry matching `pep621` manager — ensures `>=` floors get bumped
    - `pinDigests: true` in a `packageRules` entry matching `github-actions` manager — SHA-pins action refs
    - `automerge: false` for `github-actions` and `pre-commit` managers — these should be reviewed
+   - `prHourlyLimit: 0` when using a monthly schedule — prevents updates from being drip-fed across months
 3. Ensure `.github/workflows/renovate.yml` exists (use the blueprint workflow as reference)
 4. Verify JSON: `python3 -c "import json; json.load(open('renovate.json')); print('valid')"`
 

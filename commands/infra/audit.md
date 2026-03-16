@@ -179,6 +179,7 @@ For each applicable area, read the relevant config files and compare against the
 - Renovate config exists but no `.github/workflows/renovate.yml` (self-hosted workflow required)
 - Renovate config exists but `rangeStrategy` is not `"bump"` for Python deps (`pep621` manager) — version range floors in `pyproject.toml` (e.g. `ruff>=0.15.2`) won't be bumped automatically, they silently go stale
 - Renovate config exists but `pinDigests` is not enabled for GitHub Actions — action refs use mutable tags instead of SHA-pinned digests (supply chain risk). Only flag this when Renovate is actually configured (pinDigests without Renovate is impractical)
+- Renovate schedule is monthly (or less frequent) but `prHourlyLimit` is not `0` — updates will be drip-fed across months instead of delivered in one batch. Either set `prHourlyLimit: 0` or increase schedule frequency
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)

@@ -216,6 +216,7 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
   "baseBranchPatterns": ["develop", "test"],  // [ADAPT] match your branch names
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
+  "prHourlyLimit": 0,
   "packageRules": [
     {
       "description": "GitHub Actions: pin digests for supply-chain security, no automerge",
@@ -253,8 +254,20 @@ Without `pinDigests`, action refs like `actions/checkout@v6` use a mutable Git t
 
 **Note:** `pinDigests` is only practical when Renovate is running — otherwise you'd be stuck maintaining SHAs by hand.
 
+### Why `prHourlyLimit: 0` for monthly schedules
+
+Renovate defaults to `prHourlyLimit: 2` — at most 2 PRs created per clock hour. This protects against CI flooding during onboarding. But for monthly-scheduled repos, it's counterproductive: Renovate gets a narrow window, creates 2-4 PRs, and defers the rest to next month. You end up manually re-triggering runs to get all your updates.
+
+With a monthly schedule, the schedule itself is the throttle. Set `prHourlyLimit: 0` (no limit) so Renovate delivers all updates in one batch. The `prConcurrentLimit` (default: 10) still caps total open PRs as a safety net.
+
+| Schedule frequency | Recommended `prHourlyLimit` |
+|---|---|
+| Hourly / daily | `2` (default) — catches up across frequent runs |
+| Weekly | `2` is fine — catches up within a week |
+| Monthly | `0` — otherwise updates drip-feed across months |
+
 ### Minimum acceptable config
-A `renovate.json` with sensible defaults, `rangeStrategy: "bump"` for Python deps, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
+A `renovate.json` with sensible defaults, `rangeStrategy: "bump"` for Python deps, `prHourlyLimit: 0` for monthly schedules, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
 
 ---
 
