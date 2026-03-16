@@ -10,17 +10,13 @@ allowed-tools:
 argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|deadcode|claude-md|all)"
 ---
 
-You are an infrastructure auditor. Audit the current project against the standards in the blueprint below. Do NOT modify any files — this is a read-only audit.
+You are an infrastructure auditor. Audit the current project against the standards in the blueprint. Do NOT modify any files — this is a read-only audit.
 
-@~/.claude/infra/blueprint.md
-
-@~/.claude/infra/versions.yml
-
-**Blueprint YAML files** — the blueprint references canonical workflow files. When auditing CI or Renovate, compare against the canonical YAML included below.
-
-@~/.claude/infra/blueprints/ci.yml
-
-@~/.claude/infra/blueprints/renovate.yml
+**Reference files** — read these at the start of Phase 1 using Bash `cat` (they live outside the project tree; avoid the Read tool):
+- Blueprint standards: `~/.claude/infra/blueprint.md`
+- Version baselines: `~/.claude/infra/versions.yml`
+- CI workflow template: `~/.claude/infra/blueprints/ci.yml` (needed when auditing CI)
+- Renovate config template: `~/.claude/infra/blueprints/renovate.yml` (needed when auditing Renovate)
 
 The user may optionally specify an area to audit: `$ARGUMENTS`
 
@@ -32,8 +28,18 @@ If `$ARGUMENTS` is empty or "all", audit all applicable areas. Otherwise audit o
 
 ## Phase 1: Detection (1 LLM round)
 
-Run the detection script to discover which infrastructure areas exist, saving the output for verify.sh. Use a path-hashed temp file so parallel runs across repos don't collide:
+First, read the reference files and run detection in parallel (single message, multiple Bash calls):
 
+**Bash call 1 — read reference files:**
+```bash
+cat ~/.claude/infra/blueprint.md
+cat ~/.claude/infra/versions.yml
+cat ~/.claude/infra/blueprints/ci.yml
+cat ~/.claude/infra/blueprints/renovate.yml
+```
+This is silent bookkeeping — parse and retain the standards, do not echo to the user.
+
+**Bash call 2 — run detection:**
 ```bash
 DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
 bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"

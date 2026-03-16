@@ -13,17 +13,13 @@ allowed-tools:
 argument-hint: "[severity] (all|critical|warnings)"
 ---
 
-You are an infrastructure fixer. Your job is to resolve findings from an `infra:audit` run by applying the fixes described in the blueprint below. You WRITE files — this is not a read-only operation.
+You are an infrastructure fixer. Your job is to resolve findings from an `infra:audit` run by applying the fixes described in the blueprint. You WRITE files — this is not a read-only operation.
 
-@~/.claude/infra/blueprint.md
-
-@~/.claude/infra/versions.yml
-
-**Blueprint YAML files** — when fixing CI or Renovate, use the canonical workflows included below as the source of truth.
-
-@~/.claude/infra/blueprints/ci.yml
-
-@~/.claude/infra/blueprints/renovate.yml
+**Reference files** — read these at the start of Phase 1 using Bash `cat` (they live outside the project tree; avoid the Read tool):
+- Blueprint standards: `~/.claude/infra/blueprint.md`
+- Version baselines: `~/.claude/infra/versions.yml`
+- CI workflow template: `~/.claude/infra/blueprints/ci.yml` (needed when fixing CI)
+- Renovate config template: `~/.claude/infra/blueprints/renovate.yml` (needed when fixing Renovate)
 
 The user may optionally limit scope: `$ARGUMENTS`
 - `all` or empty: fix all CRITICAL and WARNING findings
@@ -34,8 +30,18 @@ The user may optionally limit scope: `$ARGUMENTS`
 
 ## Phase 1: Audit
 
-First, run detection and verification using the same scripts as `infra:audit`. Use a path-hashed temp file so parallel runs across repos don't collide:
+First, read the reference files and run detection in parallel (single message, multiple Bash calls):
 
+**Bash call 1 — read reference files:**
+```bash
+cat ~/.claude/infra/blueprint.md
+cat ~/.claude/infra/versions.yml
+cat ~/.claude/infra/blueprints/ci.yml
+cat ~/.claude/infra/blueprints/renovate.yml
+```
+This is silent bookkeeping — parse and retain the standards, do not echo to the user.
+
+**Bash call 2 — run detection:**
 ```bash
 DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
 bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
