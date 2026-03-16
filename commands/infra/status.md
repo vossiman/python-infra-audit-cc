@@ -29,11 +29,21 @@ PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
 
 ## Step 2: Look up history
 
-Look up the history file using a fallback strategy:
+Look up the history file using Bash (history files are outside the project tree — avoid the Read tool):
 
-1. Try `~/.claude/infra/history/{sanitized}-{PATH_HASH}.json` (new format)
-2. Fall back to `~/.claude/infra/history/{sanitized}.json` (legacy format)
-3. If neither exists → no history found
+```bash
+HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
+LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
+if [ -f "$HISTORY_FILE" ]; then
+  cat "$HISTORY_FILE"
+elif [ -f "$LEGACY_FILE" ]; then
+  cat "$LEGACY_FILE"
+else
+  echo "NO_HISTORY"
+fi
+```
+
+If the output is `NO_HISTORY` → no history found.
 
 If **neither file exists**, print:
 
@@ -75,7 +85,7 @@ Compute this for:
 
 ## Step 4: Display status
 
-Read the full history JSON and print a styled report.
+Parse the history JSON (re-read via Bash `cat` if needed — do not use the Read tool for history files) and print a styled report.
 
 **If score >= 9.0:**
 ```

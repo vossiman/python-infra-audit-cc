@@ -16,9 +16,11 @@ You are an infrastructure auditor. Audit the current project against the standar
 
 @~/.claude/infra/versions.yml
 
-**Blueprint YAML files** — the blueprint references canonical workflow files. When auditing CI or Renovate, read the corresponding YAML for the full expected configuration:
-- CI: `~/.claude/infra/blueprints/ci.yml`
-- Renovate: `~/.claude/infra/blueprints/renovate.yml`
+**Blueprint YAML files** — the blueprint references canonical workflow files. When auditing CI or Renovate, compare against the canonical YAML included below.
+
+@~/.claude/infra/blueprints/ci.yml
+
+@~/.claude/infra/blueprints/renovate.yml
 
 The user may optionally specify an area to audit: `$ARGUMENTS`
 
@@ -34,10 +36,12 @@ Run the detection script to discover which infrastructure areas exist, saving th
 
 ```bash
 DETECT_JSON="/tmp/infra-detect-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
-bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON" && cat "$DETECT_JSON"
+bash ~/.claude/infra/scripts/detect.sh > "$DETECT_JSON"
 ```
 
-This outputs JSON with: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
+Read the detection results from the temp file using Bash (`cat "$DETECT_JSON"`) — this is silent bookkeeping, not user-facing output.
+
+The JSON contains: `areas` (boolean map), `venv_tools` (version strings), `requires_python`, `project_name`, `ci_files`, `claude_md_files`, `env` (config mechanism details), `tests` (coverage/snapshot config).
 
 Parse the JSON output.
 
@@ -64,10 +68,11 @@ Launch ALL of the following in a **single message** (parallel tool calls):
 ### 2a. CI Verification (Bash)
 
 ```bash
-bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON"
+VERIFY_JSON="/tmp/infra-verify-$(echo -n "$PWD" | sha256sum | cut -c1-8).json"
+bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON" > "$VERIFY_JSON" && echo "verify.sh complete"
 ```
 
-This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection, and outputs JSON with pass/fail per tool, coverage percentage, and version mismatch details.
+This runs ruff, pyright, pre-commit, pytest **in parallel** with git stash/restore protection. Results are saved to `$VERIFY_JSON` — read them later with `cat "$VERIFY_JSON"` (silent bookkeeping).
 
 ### 2b. Area Audit Agents (Task — one per detected area)
 
@@ -229,6 +234,12 @@ For each applicable area, read the relevant config files and compare against the
 
 ## Phase 3: Report + Save (1 LLM round)
 
+Read the verification results using Bash:
+```bash
+cat "$VERIFY_JSON"
+```
+This is silent bookkeeping — do not echo raw JSON to the user. (Detection results were already parsed in Phase 1.)
+
 Collect all results: verify.sh JSON + area agent findings + CLAUDE.md agent findings. Merge into a unified findings list. Map verify.sh JSON fields to severity-tagged findings using the trigger rules above.
 
 ### Score calculation
@@ -351,10 +362,17 @@ HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
 LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
 ```
 
-**Read existing history:**
-1. If `$HISTORY_FILE` exists, read it (via Read tool) and extract the `runs` array
-2. Else if `$LEGACY_FILE` exists, read it instead — this is a v1 migration
-3. If the file has no `runs` array (v1 schema), seed the array with one entry from the existing top-level fields:
+**Read existing history** (use Bash, not the Read tool — history files are outside the project tree):
+```bash
+if [ -f "$HISTORY_FILE" ]; then
+  cat "$HISTORY_FILE"
+elif [ -f "$LEGACY_FILE" ]; then
+  cat "$LEGACY_FILE"
+else
+  echo "{}"
+fi
+```
+Parse the JSON output. If the file has no `runs` array (v1 schema), seed the array with one entry from the existing top-level fields:
    ```json
    {"date": "{last_audit}", "type": "audit", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
    ```
@@ -391,4 +409,4 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 
 **Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
 
-**Cleanup temp file:** Remove `$DETECT_JSON` after the audit completes.
+**Cleanup temp files:** Remove `$DETECT_JSON` and `$VERIFY_JSON` after the audit completes.
