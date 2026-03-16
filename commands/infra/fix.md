@@ -200,7 +200,7 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 ```
 
 **vulture setup** (full install — when vulture not configured):
-1. Add `vulture>=2.14` to `[project.optional-dependencies] dev` in `pyproject.toml`
+1. Add `vulture>=2.15` to `[project.optional-dependencies] dev` in `pyproject.toml`
 2. Run `uv sync --all-extras` (or `.venv/bin/pip install -e ".[dev]"`) to install
 3. Add `[tool.vulture]` config to `pyproject.toml` with `paths`, `min_confidence = 80`, and `exclude` list
 4. **Framework-specific `ignore_decorators`**: inspect detection JSON `frameworks` field, add only relevant decorators:
@@ -214,7 +214,7 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 5. Add vulture pre-commit hook to `.pre-commit-config.yaml`:
    ```yaml
      - repo: https://github.com/jendrikseipp/vulture
-       rev: v2.14  # [ADAPT] match installed vulture version — see versions.yml for baseline
+       rev: v2.15  # [ADAPT] match installed vulture version — see versions.yml for baseline
        hooks:
          - id: vulture
    ```
@@ -236,6 +236,17 @@ After venv is created, all subsequent commands MUST use `.venv/bin/` prefix.
 - List findings for user review
 - Common safe removals: unused imports (already caught by ruff F401), unused local variables
 - Caution: unused functions/classes may be invoked dynamically or via external entry points
+
+**renovate config** (when renovate config is missing or incomplete):
+1. Create `renovate.json` (or update existing) using the recommended config from the blueprint's "Recommended `renovate.json`" section
+2. Key settings to ensure are present:
+   - `"extends": ["config:recommended"]` — sensible defaults
+   - `"baseBranchPatterns"` — should target `develop`/`test`, not `main` directly. **`[ADAPT]`** to the project's actual branch names
+   - `rangeStrategy: "bump"` in a `packageRules` entry matching `pep621` manager — ensures `>=` floors get bumped
+   - `pinDigests: true` in a `packageRules` entry matching `github-actions` manager — SHA-pins action refs
+   - `automerge: false` for `github-actions` and `pre-commit` managers — these should be reviewed
+3. Ensure `.github/workflows/renovate.yml` exists (use the blueprint workflow as reference)
+4. Verify JSON: `python3 -c "import json; json.load(open('renovate.json')); print('valid')"`
 
 For all other areas (ruff, pyright, CI, renovate, etc.), create/update the config file using the blueprint as reference.
 

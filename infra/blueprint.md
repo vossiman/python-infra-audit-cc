@@ -116,7 +116,7 @@ repos:
       - id: check-json
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.2  # [ADAPT] match project ruff version
+    rev: v0.15.6  # [ADAPT] match project ruff version
     hooks:
       - id: ruff
         args: [--fix]
@@ -127,7 +127,7 @@ repos:
 
 ```yaml
   - repo: https://github.com/jendrikseipp/vulture
-    rev: v2.14  # [ADAPT] match project vulture version
+    rev: v2.15  # [ADAPT] match project vulture version
     hooks:
       - id: vulture
 ```
@@ -207,8 +207,54 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
 - Batching dependency updates before promoting to `main` gives you a clean integration checkpoint
 - Trunk-based teams that release via tags on `main` _can_ set `"baseBranches": ["main"]`, but should be aware that every Renovate merge lands directly on the release branch
 
+### Recommended `renovate.json`
+
+```json
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranchPatterns": ["develop", "test"],  // [ADAPT] match your branch names
+  "labels": ["dependencies"],
+  "schedule": ["before 5am on the first day of the month"],
+  "packageRules": [
+    {
+      "description": "GitHub Actions: pin digests for supply-chain security, no automerge",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Python deps: bump >= floors so they don't silently go stale",
+      "matchManagers": ["pep621"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Pre-commit hooks: no automerge (review rev bumps)",
+      "matchManagers": ["pre-commit"],
+      "automerge": false
+    }
+  ]
+}
+```
+
+> **Note:** Use `renovate.json5` (JSONC) if you want inline comments. Renovate supports both formats.
+
+### Why `rangeStrategy: "bump"` matters
+
+Renovate's default `rangeStrategy` is `"auto"`. For Python dependencies in `pyproject.toml` (`pep621` manager), `"auto"` means:
+- New version **in-range** (e.g. `ruff>=0.15.2` and `0.15.6` is released) — Renovate only updates the lockfile, leaves `pyproject.toml` untouched
+- New version **out-of-range** (e.g. a new major version) — Renovate replaces the range
+
+This means `>=` version floors silently go stale. With `"bump"`, Renovate proposes PRs like `ruff>=0.15.2` → `ruff>=0.15.6` even when the new version already satisfies the range.
+
+### Why `pinDigests` for GitHub Actions
+
+Without `pinDigests`, action refs like `actions/checkout@v6` use a mutable Git tag. A compromised tag can be force-pushed to point at malicious code. With `pinDigests: true`, Renovate converts refs to SHA-pinned form (`actions/checkout@<sha> # v6`) and keeps them updated automatically. This is the [GitHub-recommended supply-chain security practice](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-third-party-actions).
+
+**Note:** `pinDigests` is only practical when Renovate is running — otherwise you'd be stuck maintaining SHAs by hand.
+
 ### Minimum acceptable config
-A `renovate.json` with sensible defaults and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift.
+A `renovate.json` with sensible defaults, `rangeStrategy: "bump"` for Python deps, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
 
 ---
 
@@ -232,8 +278,8 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "ruff>=0.15.2",         # [ADAPT] use latest
-    "pre-commit>=4.2.0",    # [ADAPT] use latest
+    "ruff>=0.15.6",         # [ADAPT] use latest
+    "pre-commit>=4.5.1",    # [ADAPT] use latest
 ]
 
 [tool.pytest.ini_options]
@@ -469,7 +515,7 @@ __pycache__/
 ```toml
 [project.optional-dependencies]
 dev = [
-    "vulture>=2.14",     # [ADAPT] use latest stable
+    "vulture>=2.15",     # [ADAPT] use latest stable
 ]
 ```
 
@@ -549,7 +595,7 @@ For persistent false positives that can't be suppressed by decorators or pattern
 
 ```yaml
   - repo: https://github.com/jendrikseipp/vulture
-    rev: v2.14  # [ADAPT] match project vulture version
+    rev: v2.15  # [ADAPT] match project vulture version
     hooks:
       - id: vulture
 ```

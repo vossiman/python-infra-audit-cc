@@ -6,7 +6,19 @@
   "schedule": ["before 5am on the first day of the month"],
   "packageRules": [
     {
+      "description": "GitHub Actions: pin digests for supply-chain security, no automerge",
       "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Python deps: bump >= floors so they don't silently go stale",
+      "matchManagers": ["pep621"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Pre-commit hooks: no automerge (review rev bumps)",
+      "matchManagers": ["pre-commit"],
       "automerge": false
     }
   ]

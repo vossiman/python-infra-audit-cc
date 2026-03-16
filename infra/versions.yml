@@ -1,5 +1,5 @@
 # infra/versions.yml — single source of truth for blueprint-recommended versions
-# Last updated: 2026-02-23
+# Last updated: 2026-03-16
 #
 # These are BASELINES, not ceilings. A project using a NEWER version than
 # listed here is perfectly fine — only flag projects that are significantly
@@ -26,20 +26,20 @@ actions:
 
 # --- GitHub Actions (exact pins — no floating major tag exists for these) ---
 actions-pinned:
-  renovatebot-github-action: v46.0.2   # renovatebot/github-action
+  renovatebot-github-action: v46.1.5   # renovatebot/github-action
 
 # --- Pre-commit hook revs ---
 pre-commit:
   pre-commit-hooks: v6.0.0  # pre-commit/pre-commit-hooks
-  ruff-pre-commit: v0.15.2  # astral-sh/ruff-pre-commit
-  vulture: v2.14            # jendrikseipp/vulture
+  ruff-pre-commit: v0.15.6  # astral-sh/ruff-pre-commit
+  vulture: v2.15            # jendrikseipp/vulture
 
 # --- Tool version floors (pyproject.toml [project.optional-dependencies] dev) ---
 tools:
-  ruff: ">=0.15.2"
-  pre-commit: ">=4.2.0"
+  ruff: ">=0.15.6"
+  pre-commit: ">=4.5.1"
   pytest: ">=7.0"
-  vulture: ">=2.14"
+  vulture: ">=2.15"
 
 # --- Runtime versions used in CI blueprints ---
 # Note: python and node are [ADAPT] — projects choose their own.
