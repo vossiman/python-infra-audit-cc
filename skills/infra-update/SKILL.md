@@ -1,6 +1,6 @@
 ---
 name: infra-update
-description: Update the infra-audit skill to the latest version
+description: Use when updating the infra-audit skill to the latest version
 allowed-tools:
   - Bash
   - Read

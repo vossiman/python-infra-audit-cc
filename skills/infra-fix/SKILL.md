@@ -1,6 +1,6 @@
 ---
 name: infra-fix
-description: Fix audit findings using parallel agents
+description: Use when fixing infrastructure audit findings — dispatches parallel agents
 allowed-tools:
   - Read
   - Write

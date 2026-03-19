@@ -1,6 +1,6 @@
 ---
 name: infra-status
-description: Show audit/fix status for the current project — last run times, score, findings
+description: Use when checking the current project's infrastructure audit status and score
 allowed-tools:
   - Read
   - Glob

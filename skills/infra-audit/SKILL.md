@@ -1,6 +1,6 @@
 ---
 name: infra-audit
-description: Audit Python project infrastructure against known-good blueprint
+description: Use when auditing a Python project's infrastructure against the known-good blueprint
 allowed-tools:
   - Read
   - Glob

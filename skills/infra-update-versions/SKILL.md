@@ -1,6 +1,6 @@
 ---
 name: infra-update-versions
-description: Refresh blueprint version baselines in versions.yml against latest upstream releases
+description: Use when refreshing blueprint version baselines against latest upstream releases
 allowed-tools:
   - Read
   - Write
