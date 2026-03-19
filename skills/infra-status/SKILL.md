@@ -1,5 +1,5 @@
 ---
-name: infra:status
+name: infra-status
 description: Show audit/fix status for the current project — last run times, score, findings
 allowed-tools:
   - Read
@@ -53,7 +53,7 @@ If **neither file exists**, print:
   Project:  {project-name}
   Status:   No audit history found
 
-  Run /infra:audit to get started.
+  Run /infra-audit to get started.
 ```
 
 And stop.
@@ -112,12 +112,12 @@ Parse the history JSON (re-read via Bash `cat` if needed — do not use the Read
   Last fix:    never
 
   Findings:    1 critical · 2 warnings · 0 info
-  Status:      Action needed — run /infra:fix
+  Status:      Action needed — run /infra-fix
 ```
 
 **If the audit is older than 30 days, add a staleness warning:**
 ```
-  Staleness:   Audit is {N} days old — consider re-running /infra:audit
+  Staleness:   Audit is {N} days old — consider re-running /infra-audit
 ```
 
 ### Score bar

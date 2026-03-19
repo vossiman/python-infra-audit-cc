@@ -1,5 +1,5 @@
 ---
-name: infra:update-versions
+name: infra-update-versions
 description: Refresh blueprint version baselines in versions.yml against latest upstream releases
 allowed-tools:
   - Read
@@ -139,4 +139,4 @@ Leave the changes uncommitted. Report what was changed and suggest the user comm
 
 Summarise what changed (or confirm nothing changed). Remind the user:
 
-> These updates are live on this machine immediately. Other installs of the skill will receive them on the next `npm` release. Run `/infra:update` on other machines to get the latest published release.
+> These updates are live on this machine immediately. Other installs of the skill will receive them on the next `npm` release. Run `/infra-update` on other machines to get the latest published release.

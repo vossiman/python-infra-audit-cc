@@ -1,5 +1,5 @@
 ---
-name: infra:fix
+name: infra-fix
 description: Fix audit findings using parallel agents
 allowed-tools:
   - Read
@@ -13,7 +13,7 @@ allowed-tools:
 argument-hint: "[severity] (all|critical|warnings)"
 ---
 
-You are an infrastructure fixer. Your job is to resolve findings from an `infra:audit` run by applying the fixes described in the blueprint. You WRITE files — this is not a read-only operation.
+You are an infrastructure fixer. Your job is to resolve findings from an `infra-audit` run by applying the fixes described in the blueprint. You WRITE files — this is not a read-only operation.
 
 **Reference files** — read these at the start of Phase 1 using Bash `cat` (they live outside the project tree; avoid the Read tool):
 - Blueprint standards: `~/.claude/infra/blueprint.md`
@@ -87,9 +87,9 @@ bash ~/.claude/infra/scripts/verify.sh "$DETECT_JSON" > "$VERIFY_JSON" && echo "
 
 Read the verification results via `cat .infra-audit/verify.json` (silent bookkeeping).
 
-Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra:audit`.
+Using the detection context and verification results, compare against the blueprint to collect all findings with their severity, area, and fix instructions. Follow the same audit triggers and severity rules as `infra-audit`.
 
-Save findings locally using the same `findings.json` schema as defined in `infra:audit` Phase 3 — all findings with `"status": "open"`. Write using Bash heredoc (silent bookkeeping).
+Save findings locally using the same `findings.json` schema as defined in `infra-audit` Phase 3 — all findings with `"status": "open"`. Write using Bash heredoc (silent bookkeeping).
 
 **Both branches converge here.** Do NOT output the full audit report. Instead, collect the findings into a structured list you'll use in Phase 2.
 
@@ -355,7 +355,7 @@ Write using Bash heredoc (silent bookkeeping).
 
 ### Update audit history
 
-After validation, update the audit history file using the same filename and migration logic as `infra:audit` Phase 3.
+After validation, update the audit history file using the same filename and migration logic as `infra-audit` Phase 3.
 
 **Filename with path hash:**
 ```bash
@@ -376,7 +376,7 @@ else
 fi
 ```
 Parse the JSON output:
-- If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra:audit` Phase 3)
+- If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra-audit` Phase 3)
 - If no file exists (empty JSON from `echo "{}"`), start with an empty `runs` array
 
 **Append current run** — add a new entry with `"type": "fix"`:
@@ -386,7 +386,7 @@ Parse the JSON output:
 
 If `runs` has more than 50 entries after appending, drop the oldest to keep only the last 50.
 
-**Write schema v2 JSON** — same format as `infra:audit` Phase 3, but also set the `last_fix` field:
+**Write schema v2 JSON** — same format as `infra-audit` Phase 3, but also set the `last_fix` field:
 ```json
 {
   "schema_version": 2,

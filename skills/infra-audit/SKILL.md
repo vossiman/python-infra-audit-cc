@@ -1,5 +1,5 @@
 ---
-name: infra:audit
+name: infra-audit
 description: Audit Python project infrastructure against known-good blueprint
 allowed-tools:
   - Read
