@@ -94,8 +94,7 @@ if (hasHelp) {
     npx python-infra-audit-cc --opencode --global --uninstall
 
   ${yellow}After install:${reset}
-    Claude Code: run ${cyan}/infra:audit${reset}
-    OpenCode:    run ${cyan}/infra-audit${reset}
+    Run ${cyan}/infra-audit${reset} in Claude Code or OpenCode
 `);
   process.exit(0);
 }
@@ -278,25 +277,19 @@ function generateManifest(dir, baseDir) {
 }
 
 /**
- * Transform command markdown content for OpenCode.
- * - Rewrite frontmatter: keep only description
- * - Replace /infra:X → /infra-X (slash command references)
- * - Replace `infra:X` → `infra-X` (backtick-quoted references)
+ * Transform skill markdown content for OpenCode.
+ * - Rewrite frontmatter: keep only name + description (OpenCode skill spec)
  */
 function transformForOpencode(content) {
-  // 1. Rewrite frontmatter: keep only description
+  // Rewrite frontmatter: keep only name + description
   content = content.replace(/^---\n([\s\S]*?)\n---/, (match, fm) => {
+    const nameMatch = fm.match(/^name:\s*(.+)$/m);
     const descMatch = fm.match(/^description:\s*(.+)$/m);
-    if (descMatch) {
-      return `---\ndescription: ${descMatch[1]}\n---`;
-    }
-    return '---\n---';
+    const parts = [];
+    if (nameMatch) parts.push(`name: ${nameMatch[1]}`);
+    if (descMatch) parts.push(`description: ${descMatch[1]}`);
+    return `---\n${parts.join('\n')}\n---`;
   });
-
-  // 2. Replace infra:audit/fix/status/update/update-versions → infra-audit/fix/status/update/update-versions
-  //    Covers all contexts: /infra:audit, `infra:audit`, plain text "infra:audit"
-  //    Note: infra:update-versions matches the infra:update branch, leaving "-versions" intact — correct result
-  content = content.replace(/infra:(audit|fix|status|update)/g, 'infra-$1');
 
   return content;
 }
@@ -308,16 +301,16 @@ function transformForOpencode(content) {
 const MANIFEST_NAME = 'infra-audit-manifest.json';
 const PATCHES_DIR_NAME = 'infra-audit-local-patches';
 
-// Command names (source files live at commands/infra/{name}.md)
-const COMMAND_NAMES = ['audit', 'fix', 'status', 'update', 'update-versions'];
+// Skill names (source files live at skills/infra-{name}/SKILL.md)
+const SKILL_NAMES = ['audit', 'fix', 'status', 'update', 'update-versions'];
 
 // Files we install (relative to config dir) — Claude Code layout
 const OUR_FILES = [
-  'commands/infra/audit.md',
-  'commands/infra/fix.md',
-  'commands/infra/status.md',
-  'commands/infra/update.md',
-  'commands/infra/update-versions.md',
+  'skills/infra-audit/SKILL.md',
+  'skills/infra-fix/SKILL.md',
+  'skills/infra-status/SKILL.md',
+  'skills/infra-update/SKILL.md',
+  'skills/infra-update-versions/SKILL.md',
   'infra/blueprint.md',
   'infra/blueprints/ci.yml',
   'infra/blueprints/renovate.yml',
@@ -329,13 +322,13 @@ const OUR_FILES = [
   MANIFEST_NAME,
 ];
 
-// Files we install (relative to config dir) — OpenCode layout (flat commands, no hooks)
+// Files we install (relative to config dir) — OpenCode layout (no hooks)
 const OUR_FILES_OPENCODE = [
-  'commands/infra-audit.md',
-  'commands/infra-fix.md',
-  'commands/infra-status.md',
-  'commands/infra-update.md',
-  'commands/infra-update-versions.md',
+  'skills/infra-audit/SKILL.md',
+  'skills/infra-fix/SKILL.md',
+  'skills/infra-status/SKILL.md',
+  'skills/infra-update/SKILL.md',
+  'skills/infra-update-versions/SKILL.md',
   'infra/blueprint.md',
   'infra/blueprints/ci.yml',
   'infra/blueprints/renovate.yml',
@@ -345,6 +338,30 @@ const OUR_FILES_OPENCODE = [
   'infra/VERSION',
   MANIFEST_NAME,
 ];
+
+// Legacy layout files (for cleanup on upgrade from commands → skills)
+const LEGACY_FILES_CLAUDE = [
+  'commands/infra/audit.md',
+  'commands/infra/fix.md',
+  'commands/infra/status.md',
+  'commands/infra/update.md',
+  'commands/infra/update-versions.md',
+];
+
+const LEGACY_FILES_OPENCODE = [
+  'commands/infra-audit.md',
+  'commands/infra-fix.md',
+  'commands/infra-status.md',
+  'commands/infra-update.md',
+  'commands/infra-update-versions.md',
+];
+
+// Legacy directories to clean up (only if empty after file removal)
+const LEGACY_DIRS_CLAUDE = [
+  'commands/infra',    // check first (inner)
+];
+
+const LEGACY_DIRS_OPENCODE = [];  // flat layout, no subdirs to clean
 
 // ──────────────────────────────────────────────────────
 // Local Patch Persistence
@@ -415,6 +432,78 @@ function reportLocalPatches(configDir) {
   }
 }
 
+/**
+ * Remove legacy command files from a previous install.
+ * Only removes files that are in the OLD manifest AND match the old layout.
+ * Backs up user-modified files before removal.
+ */
+function cleanupLegacyCommands(configDir, isOpencode) {
+  const manifestPath = path.join(configDir, MANIFEST_NAME);
+  if (!fs.existsSync(manifestPath)) return;
+
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { return; }
+
+  // Only run cleanup if the old manifest contains command-layout files
+  const legacyFiles = isOpencode ? LEGACY_FILES_OPENCODE : LEGACY_FILES_CLAUDE;
+  const legacyDirs = isOpencode ? LEGACY_DIRS_OPENCODE : LEGACY_DIRS_CLAUDE;
+
+  const hasLegacyLayout = legacyFiles.some(f => manifest.files && manifest.files[f]);
+  if (!hasLegacyLayout) return;
+
+  console.log(`  ${yellow}Upgrading from commands/ to skills/ layout...${reset}`);
+
+  let removedCount = 0;
+
+  for (const relPath of legacyFiles) {
+    const fullPath = path.join(configDir, relPath);
+    if (!fs.existsSync(fullPath)) continue;
+
+    // Only delete if this file is in our manifest
+    if (!manifest.files || !manifest.files[relPath]) {
+      console.log(`  ${dim}─${reset} Skipping ${relPath} (not in manifest)`);
+      continue;
+    }
+
+    // Check if user modified it
+    const currentHash = fileHash(fullPath);
+    if (currentHash !== manifest.files[relPath]) {
+      // Back up modified file
+      const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
+      const backupPath = path.join(patchesDir, relPath);
+      fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+      fs.copyFileSync(fullPath, backupPath);
+      console.log(`  ${yellow}i${reset} Backed up modified ${relPath}`);
+    }
+
+    fs.unlinkSync(fullPath);
+    removedCount++;
+    console.log(`  ${green}✓${reset} Removed legacy ${relPath}`);
+  }
+
+  // Clean up empty legacy directories (inner-first)
+  for (const relDir of legacyDirs) {
+    const dirPath = path.join(configDir, relDir);
+    if (fs.existsSync(dirPath)) {
+      try {
+        const remaining = fs.readdirSync(dirPath);
+        if (remaining.length === 0) {
+          fs.rmdirSync(dirPath);
+          console.log(`  ${green}✓${reset} Removed empty directory ${relDir}/`);
+        } else {
+          console.log(`  ${dim}─${reset} Kept ${relDir}/ (contains other files)`);
+        }
+      } catch (e) {
+        // Directory might have been removed already, that's fine
+      }
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log(`  ${green}✓${reset} Legacy cleanup complete (${removedCount} file(s))\n`);
+  }
+}
+
 // ──────────────────────────────────────────────────────
 // Install
 // ──────────────────────────────────────────────────────
@@ -437,25 +526,24 @@ function install(isGlobal, isOpencode) {
   // Save any locally modified files before overwriting
   saveLocalPatches(configDir);
 
+  // Clean up legacy commands/ layout if upgrading
+  cleanupLegacyCommands(configDir, isOpencode);
+
   // Track failures
   const failures = [];
 
   // Track installed files for manifest
   const installedFiles = [];
 
-  // ── 1. Command files ──
-  for (const name of COMMAND_NAMES) {
-    const cmdSrc = path.join(src, 'commands', 'infra', `${name}.md`);
-
-    // OpenCode: flat commands/infra-{name}.md; Claude Code: commands/infra/{name}.md
-    const destRelPath = isOpencode
-      ? `commands/infra-${name}.md`
-      : `commands/infra/${name}.md`;
+  // ── 1. Skill files ──
+  for (const name of SKILL_NAMES) {
+    const skillSrc = path.join(src, 'skills', `infra-${name}`, 'SKILL.md');
+    const destRelPath = `skills/infra-${name}/SKILL.md`;
     const destFull = path.join(configDir, destRelPath);
 
     fs.mkdirSync(path.dirname(destFull), { recursive: true });
 
-    let content = fs.readFileSync(cmdSrc, 'utf8');
+    let content = fs.readFileSync(skillSrc, 'utf8');
     // Path template: replace ~/.claude/ with the actual install path
     content = content.replace(/~\/\.claude\//g, pathPrefix);
 
@@ -464,9 +552,9 @@ function install(isGlobal, isOpencode) {
       content = content.replace(/\$HOME\/\.claude\//g, '$HOME/.config/opencode/');
       // Replace ./.claude/ with ./.opencode/ for local project references
       content = content.replace(/\.\/\.claude\//g, './.opencode/');
-      // Transform frontmatter and command references
+      // Transform frontmatter for OpenCode
       content = transformForOpencode(content);
-      // update.md: rewrite --claude → --opencode for OpenCode context
+      // update SKILL.md: rewrite --claude → --opencode for OpenCode context
       if (name === 'update') {
         content = content.replace(/--claude/g, '--opencode');
       }
@@ -628,9 +716,8 @@ function install(isGlobal, isOpencode) {
   // Report any backed-up local patches
   reportLocalPatches(configDir);
 
-  if (isOpencode) {
-    console.log(`
-  ${green}Done!${reset} Launch OpenCode and run ${cyan}/infra-audit${reset}
+  console.log(`
+  ${green}Done!${reset} Launch ${isOpencode ? 'OpenCode' : 'Claude Code'} and run ${cyan}/infra-audit${reset}
 
   Other commands:
     ${cyan}/infra-fix${reset}             — Auto-fix audit findings using parallel agents
@@ -638,17 +725,6 @@ function install(isGlobal, isOpencode) {
     ${cyan}/infra-update${reset}          — Update to the latest version
     ${cyan}/infra-update-versions${reset} — Refresh blueprint version baselines
 `);
-  } else {
-    console.log(`
-  ${green}Done!${reset} Launch Claude Code and run ${cyan}/infra:audit${reset}
-
-  Other commands:
-    ${cyan}/infra:fix${reset}             — Auto-fix audit findings using parallel agents
-    ${cyan}/infra:status${reset}          — Check last audit/fix times and score
-    ${cyan}/infra:update${reset}          — Update to the latest version
-    ${cyan}/infra:update-versions${reset} — Refresh blueprint version baselines
-`);
-  }
 }
 
 // ──────────────────────────────────────────────────────
@@ -674,7 +750,10 @@ function uninstall(isGlobal, isOpencode) {
 
   // Remove our specific files (selective — don't touch other files)
   // Note: infra/history/ is NOT removed — it's user data, not ours
-  const filesToRemove = isOpencode ? OUR_FILES_OPENCODE : OUR_FILES;
+  const filesToRemove = [
+    ...(isOpencode ? OUR_FILES_OPENCODE : OUR_FILES),
+    ...(isOpencode ? LEGACY_FILES_OPENCODE : LEGACY_FILES_CLAUDE),
+  ];
 
   for (const relPath of filesToRemove) {
     const fullPath = path.join(configDir, relPath);
@@ -691,11 +770,24 @@ function uninstall(isGlobal, isOpencode) {
         path.join(configDir, 'infra', 'blueprints'),
         path.join(configDir, 'infra', 'scripts'),
         path.join(configDir, 'infra'),
+        // Skills directories (new layout)
+        path.join(configDir, 'skills', 'infra-audit'),
+        path.join(configDir, 'skills', 'infra-fix'),
+        path.join(configDir, 'skills', 'infra-status'),
+        path.join(configDir, 'skills', 'infra-update'),
+        path.join(configDir, 'skills', 'infra-update-versions'),
       ]
     : [
         path.join(configDir, 'infra', 'blueprints'),
         path.join(configDir, 'infra', 'scripts'),
         path.join(configDir, 'infra'),
+        // Skills directories (new layout)
+        path.join(configDir, 'skills', 'infra-audit'),
+        path.join(configDir, 'skills', 'infra-fix'),
+        path.join(configDir, 'skills', 'infra-status'),
+        path.join(configDir, 'skills', 'infra-update'),
+        path.join(configDir, 'skills', 'infra-update-versions'),
+        // Legacy commands directory (old layout)
         path.join(configDir, 'commands', 'infra'),
       ];
 
@@ -768,7 +860,7 @@ function uninstall(isGlobal, isOpencode) {
     console.log(`  ${green}✓${reset} Removed local patches backup`);
   }
 
-  const skillName = isOpencode ? 'infra-audit' : 'infra:audit';
+  const skillName = 'infra-audit';
 
   if (removedCount === 0) {
     console.log(`  ${yellow}⚠${reset} No ${skillName} files found to remove.`);
