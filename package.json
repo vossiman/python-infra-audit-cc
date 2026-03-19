@@ -7,7 +7,7 @@
   },
   "files": [
     "bin",
-    "commands",
+    "skills",
     "infra",
     "hooks"
   ],
