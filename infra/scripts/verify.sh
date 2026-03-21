@@ -68,7 +68,7 @@ RESULTS_DIR=$(mktemp -d)
 cleanup() {
   if [ "$HAS_GIT" = true ]; then
     git checkout . 2>/dev/null || true
-    git clean -fd 2>/dev/null || true
+    git clean -fd -e '.infra-audit' 2>/dev/null || true
     if [ "$STASH_CREATED" = true ]; then
       git stash pop -q 2>/dev/null || true
     fi
