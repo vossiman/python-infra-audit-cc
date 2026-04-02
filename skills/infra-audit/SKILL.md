@@ -393,36 +393,18 @@ Every finding from the report must appear in the `findings` array with `"status"
 
 After outputting the report, persist the results so future sessions have context on what was audited and when.
 
-**History location:** `~/.claude/infra/history/`
+**History location:** `.infra-audit/history.json` (per-project, gitignored)
 
-**Filename with path hash:**
+**Read existing history:**
 ```bash
-SANITIZED="{project-name}"   # same sanitized name from the report
-PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
-HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
-LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
-```
-
-**Read existing history** (use Bash, not the Read tool — history files are outside the project tree):
-```bash
+HISTORY_FILE=".infra-audit/history.json"
 if [ -f "$HISTORY_FILE" ]; then
   cat "$HISTORY_FILE"
-elif [ -f "$LEGACY_FILE" ]; then
-  cat "$LEGACY_FILE"
 else
   echo "{}"
 fi
 ```
-Parse the JSON output. If the file has no `runs` array (v1 schema), seed the array with one entry from the existing top-level fields:
-   ```json
-   {"date": "{last_audit}", "type": "audit", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
-   ```
-   If the file also has a `last_fix` field, add a second seed entry:
-   ```json
-   {"date": "{last_fix}", "type": "fix", "score": {score}, "critical": {critical}, "warnings": {warnings}, "info": {info}}
-   ```
-   Sort the seeded entries by date.
-4. If no history file exists at all, start with an empty `runs` array
+If no history file exists, start with an empty `runs` array.
 
 **Append current run:**
 ```json
@@ -446,8 +428,11 @@ If `runs` has more than 50 entries after appending, drop the oldest entries to k
 }
 ```
 
-**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report.
+**IMPORTANT:** Use Bash with `cat <<'EOF' > file` (heredoc) to write the JSON file — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report.
 
-**Cleanup legacy file:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove `$LEGACY_FILE` after writing the new file. This is silent bookkeeping — do NOT print anything about it to the user.
+**Ensure `.infra-audit/` is gitignored** (idempotent):
+```bash
+grep -qxF ".infra-audit/" .gitignore 2>/dev/null || echo ".infra-audit/" >> .gitignore
+```
 
-**Keep `.infra-audit/`:** Do NOT delete the `.infra-audit/` directory — it persists between runs so `/infra-fix` can reuse the detection and findings data.
+**Keep `.infra-audit/`:** Do NOT delete the `.infra-audit/` directory — it persists between runs so `/infra-fix` can reuse the detection, findings, and history data.

@@ -8,6 +8,7 @@
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
   "prHourlyLimit": 0,
+  "rebaseWhen": "conflicted",
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {

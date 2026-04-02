@@ -357,27 +357,16 @@ Write using Bash heredoc (silent bookkeeping).
 
 After validation, update the audit history file using the same filename and migration logic as `infra-audit` Phase 3.
 
-**Filename with path hash:**
+**Read existing history:**
 ```bash
-SANITIZED="{project-name}"   # sanitized project name
-PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
-HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
-LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
-```
-
-**Read existing history** (use Bash, not the Read tool — history files are outside the project tree):
-```bash
+HISTORY_FILE=".infra-audit/history.json"
 if [ -f "$HISTORY_FILE" ]; then
   cat "$HISTORY_FILE"
-elif [ -f "$LEGACY_FILE" ]; then
-  cat "$LEGACY_FILE"
 else
   echo "{}"
 fi
 ```
-Parse the JSON output:
-- If the file has no `runs` array (v1 schema), seed the array from top-level fields (same logic as `infra-audit` Phase 3)
-- If no file exists (empty JSON from `echo "{}"`), start with an empty `runs` array
+If no history file exists, start with an empty `runs` array.
 
 **Append current run** — add a new entry with `"type": "fix"`:
 ```json
@@ -403,11 +392,9 @@ If `runs` has more than 50 entries after appending, drop the oldest to keep only
 }
 ```
 
-**Cleanup:** If `$LEGACY_FILE` exists and differs from `$HISTORY_FILE`, remove it after writing.
-
 **Keep `.infra-audit/`:** Do NOT delete the `.infra-audit/` directory — it persists between runs. The updated `findings.json` reflects which findings are fixed and which remain open.
 
-**IMPORTANT:** Use Bash with `mkdir -p` and `cat <<'EOF' > file` (heredoc) to write the JSON — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. This is silent bookkeeping — do not print anything about it to the user.
+**IMPORTANT:** Use Bash with `cat <<'EOF' > file` (heredoc) to write the JSON — do NOT use the Write tool, as its output renders the full file contents to the user and clutters the report. This is silent bookkeeping — do not print anything about it to the user.
 
 ---
 

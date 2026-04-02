@@ -114,8 +114,10 @@ repos:
       - id: check-added-large-files
       - id: check-toml
       - id: check-json
+        exclude: '^\.vscode/'   # VS Code settings use JSONC (comments)
       - id: check-merge-conflict
       - id: detect-private-key
+        exclude: '^tests/'      # test fixtures with dummy keys
       - id: check-case-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -141,6 +143,7 @@ repos:
 - **9 file-hygiene hooks**: Catch whitespace issues, malformed configs, accidentally committed large files, leftover merge conflict markers, private keys, and case-insensitive filename collisions before they hit the repo
 - **ruff + ruff-format**: Lint and format in pre-commit ensures CI will pass — no "forgot to format" failures
 - **`--fix` on ruff**: Auto-fixes safe issues (import sorting, unused imports) on commit
+- **`exclude` patterns**: `check-json` excludes `.vscode/` (JSONC files with comments fail JSON parsing); `detect-private-key` excludes `tests/` (test fixtures with dummy keys trigger false positives)
 
 ### Minimum acceptable hooks
 At minimum: `trailing-whitespace`, `end-of-file-fixer`, `detect-private-key`, and the ruff hooks.
@@ -223,6 +226,7 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
   "labels": ["dependencies"],
   "schedule": ["before 5am on the first day of the month"],
   "prHourlyLimit": 0,
+  "rebaseWhen": "conflicted",
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
@@ -245,7 +249,12 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
       "matchDatasources": ["pypi"],
       "minimumReleaseAge": "3 days"
     }
-  ]
+  ],
+  "postUpgradeTasks": {                          // [ADAPT] only needed for monorepos with per-project lock files
+    "commands": ["make sync-locks"],
+    "fileFilters": ["**/uv.lock", "**/pyproject.toml"],
+    "executionMode": "branch"
+  }
 }
 ```
 
@@ -276,6 +285,20 @@ With a monthly schedule, the schedule itself is the throttle. Set `prHourlyLimit
 | Hourly / daily | `2` (default) — catches up across frequent runs |
 | Weekly | `2` is fine — catches up within a week |
 | Monthly | `0` — otherwise updates drip-feed across months |
+
+### Why `rebaseWhen: "conflicted"`
+
+Renovate's default `rebaseWhen` is `"auto"`, which rebases every open PR on each push to the base branch. For monthly schedules where PRs sit open longer, this floods CI with unnecessary reruns every time you push to `develop`. `"conflicted"` only rebases when there is an actual merge conflict — the practical trigger that actually requires a rebase.
+
+### Why `postUpgradeTasks`
+
+Monorepos with per-project lock files (e.g. `worker/uv.lock`, `api/uv.lock`) need those locks regenerated after Renovate bumps a dependency in the root `pyproject.toml`. Without `postUpgradeTasks`, Renovate updates the root but leaves per-project locks stale — Docker builds using `uv sync --frozen` will fail.
+
+- `commands`: runs `make sync-locks` (or equivalent) after each dependency bump
+- `fileFilters`: limits which files Renovate commits from the task output (safety net)
+- `executionMode: "branch"`: runs once per branch, not once per package update
+
+**Note:** Requires `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS` in the workflow (see `infra/blueprints/renovate.yml`). Skip this block entirely for single-package projects.
 
 ### Why `config:best-practices` over `config:recommended`
 

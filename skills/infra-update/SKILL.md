@@ -49,7 +49,7 @@ npx python-infra-audit-cc@latest --claude --global
 ```
 (or `--claude --local` as appropriate)
 
-The installer preserves `infra/history/` — audit history is never overwritten or deleted by updates.
+Audit history is stored per-project in `.infra-audit/history.json` — the installer does not touch it.
 
 ## Step 5: Clear update cache
 

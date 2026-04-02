@@ -1,5 +1,5 @@
 # infra/versions.yml — single source of truth for blueprint-recommended versions
-# Last updated: 2026-03-16
+# Last updated: 2026-04-03
 #
 # These are BASELINES, not ceilings. A project using a NEWER version than
 # listed here is perfectly fine — only flag projects that are significantly
@@ -26,7 +26,7 @@ actions:
 
 # --- GitHub Actions (exact pins — no floating major tag exists for these) ---
 actions-pinned:
-  renovatebot-github-action: v46.1.5   # renovatebot/github-action
+  renovatebot-github-action: v46.1.7   # renovatebot/github-action
 
 # --- Pre-commit hook revs ---
 pre-commit:

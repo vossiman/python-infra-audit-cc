@@ -18,26 +18,16 @@ Determine the project name:
 1. Read `pyproject.toml` and extract `[project] name`
 2. If no `pyproject.toml`, use the current directory basename
 
-Sanitize the name: replace any non-alphanumeric characters (except `-` and `_`) with `_`.
-
-Compute the path hash for unique filename lookup:
-```bash
-PATH_HASH=$(echo -n "$(pwd)" | sha256sum | cut -c1-8)
-```
-
 ---
 
 ## Step 2: Look up history
 
-Look up the history file using Bash (history files are outside the project tree — avoid the Read tool):
+Look up the history file in the per-project `.infra-audit/` directory:
 
 ```bash
-HISTORY_FILE="$HOME/.claude/infra/history/${SANITIZED}-${PATH_HASH}.json"
-LEGACY_FILE="$HOME/.claude/infra/history/${SANITIZED}.json"
+HISTORY_FILE=".infra-audit/history.json"
 if [ -f "$HISTORY_FILE" ]; then
   cat "$HISTORY_FILE"
-elif [ -f "$LEGACY_FILE" ]; then
-  cat "$LEGACY_FILE"
 else
   echo "NO_HISTORY"
 fi
