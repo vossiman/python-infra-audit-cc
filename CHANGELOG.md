@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.2.0 (2026-04-03)
+
+### Breaking changes
+
+- Skill files moved from `commands/infra/*.md` to `skills/infra-*/SKILL.md` — existing installs are auto-migrated on update
+
+### New features
+
+- **Persistent `.infra-audit/` directory** — audit state (detect/verify JSON, findings, history) now lives in project-local `.infra-audit/` instead of `/tmp`, eliminating permission prompts and surviving across sessions
+- `/infra-fix` reuses existing audit data when present (skips redundant re-detection)
+- Findings tracked as fixed/open across fix waves
+
+### Blueprint enhancements
+
+- Renovate: `config:best-practices` preset, `osvVulnerabilityAlerts`, `minimumReleaseAge`, `lockFileMaintenance`, `rangeStrategy: bump`, `pinDigests`
+- Pre-commit: added `check-merge-conflict`, `detect-private-key`, `check-case-conflict` to required hooks; rev baseline enforcement
+- CI workflow: `postUpgradeTasks` example for monorepo sync-locks pattern
+- Renovate blueprint: `rebaseWhen: "conflicted"`
+
+### Audit improvements
+
+- New warnings: outdated pre-commit revs, missing `config:best-practices`, missing `osvVulnerabilityAlerts`/`minimumReleaseAge`, missing `detect-private-key`, missing `rangeStrategy`/`pinDigests`
+- Dedicated Renovate config fix recipe in `/infra-fix`
+
+### Performance & compatibility
+
+- Initial message size reduced from ~1200 to ~420 lines (blueprint loaded at runtime instead of compile-time)
+- OpenCode permission prompts eliminated (Read tool replaced with Bash reads for out-of-worktree paths)
+- Audit history moved from `~/.claude/infra/history/` to per-project `.infra-audit/history.json`
+
+### Dependency baselines
+
+- renovatebot/github-action: v46.0.2 → v46.1.7
+- ruff-pre-commit: v0.15.2 → v0.15.6
+- vulture: v2.14 → v2.15
+- ruff floor: >=0.15.6, pre-commit floor: >=4.5.1, vulture floor: >=2.15
+
+### Housekeeping
+
+- Tracked `package-lock.json` for reproducible installs
+- Installer auto-cleans legacy `commands/` layout on upgrade
+
 ## 1.1.0 (2025-02-16)
 
 ### New commands
