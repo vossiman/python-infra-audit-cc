@@ -1,13 +1,13 @@
 ---
 name: infra-audit
-description: Use when auditing a Python project's infrastructure against the known-good blueprint
+description: Use when auditing a Python or TypeScript/Node project's infrastructure against the known-good blueprint
 allowed-tools:
   - Read
   - Glob
   - Grep
   - Bash
   - Task
-argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|deadcode|claude-md|all)"
+argument-hint: "[area] (git|ruff|pyright|pre-commit|ci|renovate|pyproject|uv|venv|docker|makefile|alembic|env|tests|deadcode|claude-md|ts|all)"
 ---
 
 You are an infrastructure auditor. Audit the current project against the standards in the blueprint. Do NOT modify any files — this is a read-only audit.
@@ -36,8 +36,11 @@ cat ~/.claude/infra/blueprint.md
 cat ~/.claude/infra/versions.yml
 cat ~/.claude/infra/blueprints/ci.yml
 cat ~/.claude/infra/blueprints/renovate.yml
+cat ~/.claude/infra/blueprints/package.json 2>/dev/null || true
+cat ~/.claude/infra/blueprints/tsconfig.json 2>/dev/null || true
+cat ~/.claude/infra/blueprints/biome.jsonc 2>/dev/null || true
 ```
-This is silent bookkeeping — parse and retain the standards, do not echo to the user.
+This is silent bookkeeping — parse and retain the standards, do not echo to the user. The TS blueprints (`package.json`, `tsconfig.json`, `biome.jsonc`) are tolerant of being absent so the cat is a no-op on older skill installs.
 
 **Bash call 2 — run detection:**
 ```bash
@@ -194,12 +197,35 @@ For each applicable area, read the relevant config files and compare against the
 - `.venv` Python version doesn't match `requires-python` from `pyproject.toml`
 - No renovate config when CI exists (no automated dependency updates)
 - Renovate config exists but no `.github/workflows/renovate.yml` (self-hosted workflow required)
-- Renovate config exists but `rangeStrategy` is not `"bump"` for Python deps (`pep621` manager) — version range floors in `pyproject.toml` (e.g. `ruff>=0.15.2`) won't be bumped automatically, they silently go stale
+- Renovate config exists but `rangeStrategy` is not set explicitly for `pep621` and `npm` managers. **Use the detected `project_type` from detect.sh JSON to choose:** if `project_type == "application"`, expect `rangeStrategy: "pin"` (reproducible deploys, PR diffs show exact versions). If `project_type == "library"`, expect `rangeStrategy: "bump"` (keeps range operators so downstream consumers can dedupe). If `project_type == "unknown"`, issue an **INFO** asking the user to set `rangeStrategy` explicitly rather than guessing. The default `"auto"` is wrong for both cases — for `pep621` it means "only touch the lockfile" which lets `>=` version floors silently go stale; for `npm` it is inconsistent per-range. Always flag mismatches between detected type and configured rangeStrategy as WARNINGS
+- Renovate config exists but `rangeStrategy` is `"bump"` for Python deps (`pep621` manager) when the project is detected as an application (`project_type == "application"` in detect.sh output) — apps should `"pin"` for reproducible builds
 - Renovate config exists but `pinDigests` is not enabled for GitHub Actions — action refs use mutable tags instead of SHA-pinned digests (supply chain risk). Only flag this when Renovate is actually configured (pinDigests without Renovate is impractical)
 - Renovate schedule is monthly (or less frequent) but `prHourlyLimit` is not `0` — updates will be drip-fed across months instead of delivered in one batch. Either set `prHourlyLimit: 0` or increase schedule frequency
 - Renovate config exists but does not extend `config:best-practices` (or at minimum `config:recommended`) — missing config migration, abandonment detection, and lock file maintenance
 - Renovate config exists but `osvVulnerabilityAlerts` is not enabled — free vulnerability scanning left on the table
 - Renovate config exists with Python deps but no `minimumReleaseAge` for PyPI datasource — no stability gate against broken/malicious releases
+- Renovate config exists but `rebaseWhen` is not `"behind-base-branch"` — with `platformAutomerge` and monthly batches, PRs stale out behind `develop` and auto-merge refuses to land them. `"conflicted"` (the old recommendation) is no longer correct when automerge is in use
+- Renovate config exists but `platformAutomerge` is not `true` — GitHub's native auto-merge unused; PRs that *could* safely auto-merge won't. **Always print a "Manual verification required" note when recommending this**: the user must enable "Allow auto-merge" in repo settings AND have branch protection with at least one required status check on the Renovate target branch, or the config is inert
+- Renovate config exists but `configMigration` is not `true` — deprecated renovate syntax will not be auto-migrated, config rots over time
+- Renovate config exists but has **no `packageRules` entry automerging `patch` / `pin` / `digest`** — zero-semver-risk updates still require manual merges, defeating the point of a monthly schedule
+- Renovate config exists but `vulnerabilityAlerts` block is missing or does not set `automerge: true` — security fixes sit waiting for the next human review instead of landing immediately
+- Renovate config enables `lockFileMaintenance` but not `lockFileMaintenance.automerge: true` — monthly lockfile refresh PRs accumulate without merging, defeating the point of the maintenance schedule
+- TypeScript/Node project (`package.json` exists at root) but no `tsconfig.json` — TS source code with no config runs in default non-strict mode, which defeats the point of using TypeScript
+- `tsconfig.json` exists but `strict: true` is not set in `compilerOptions` (or is `false`) — the core type-safety guarantee is disabled. **Note:** if the tsconfig uses `extends`, the audit's flat parser may not see inherited values — flag as "could not verify; please check inherited config" rather than a hard WARNING
+- `tsconfig.json` has `strict: true` but `noUncheckedIndexedAccess` is not enabled — array/object index access returns `T` instead of `T | undefined`, a common source of runtime errors
+- `package.json` has no `packageManager` field — Corepack cannot pin the exact pnpm/npm/yarn version, leading to dev/CI version drift
+- `package.json` has no `engines.node` constraint — Node version drift between dev and CI is invisible until something breaks
+- `package.json` exists but no lockfile (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` / `bun.lock(b)`) committed — installs are non-reproducible across machines
+- Multiple lockfiles present simultaneously (e.g. both `pnpm-lock.yaml` and `package-lock.json`) — signals an incomplete migration between package managers; pick one, delete the other
+- `packageManager: "pnpm@..."` set in `package.json` but no `pnpm-lock.yaml` (or vice versa — any lockfile that doesn't match the declared package manager) — Corepack will refuse to install, or the two tools will disagree about resolution
+- `package.json` has `devDependencies` but no linter configured (neither Biome nor ESLint config detected) — no lint gate for new code
+- Linter configured but no `lint` script in `package.json` `scripts` — CI cannot easily invoke it with a uniform command
+- TypeScript source files exist (`*.ts` / `*.tsx`) but no `typecheck` script in `package.json` (`tsc -b --noEmit` or equivalent) — CI has no way to catch type errors without custom per-project commands
+- TS test files exist (`*.test.ts`, `*.spec.ts`, or a `tests/` / `__tests__/` directory with `.ts` files) but no test runner configured (no Vitest / Jest / Playwright config file) — tests cannot run
+- Test runner configured but no `test` script in `package.json` — CI cannot easily invoke tests
+- `.nvmrc` and `engines.node` disagree (e.g. `.nvmrc` says `18` but `engines.node` says `>=20`) — dev environment runs a Node version the project itself rejects
+- Node version in `engines.node` is more than 1 major version behind the `runtime.node` baseline in `versions.yml` — same logic as the existing Python version check (newer than baseline is fine, don't flag it)
+- `typescript` / `@biomejs/biome` / `vitest` / `@playwright/test` more than 1 major version behind the `node_tools:` baselines in `versions.yml` — same "don't flag newer" rule applies
 - Tests exist but no coverage configuration (`pytest-cov` not in dependencies AND no `[tool.coverage]`/`.coveragerc`)
 - Coverage configured but no minimum threshold (`fail_under` not set in `[tool.coverage.report]`, `.coveragerc`, or `--cov-fail-under` in pytest args)
 - CI runs tests but doesn't collect or report coverage (no `--cov` flag or coverage step in CI workflow)
@@ -210,6 +236,7 @@ For each applicable area, read the relevant config files and compare against the
 - Pre-commit hook revs more than 1 major version behind baselines in `versions.yml` (e.g. `pre-commit-hooks` at `v4.x` when baseline is `v6.x`) — same logic as GH Actions version check: newer than baseline is fine, don't flag it
 
 ### INFO triggers (suggestions)
+- Renovate has `platformAutomerge: true` but no `automergeStrategy` set — defaults to merge commits; prefer `"squash"` for a linear history
 - ruff `line-length` differs from 120 (legitimate preference)
 - pyright mode is `off` or not `basic`/`standard`/`strict`
 - Different build backend (setuptools vs hatchling vs flit)
@@ -222,6 +249,11 @@ For each applicable area, read the relevant config files and compare against the
 - Low test-to-source ratio — count `test_*.py`/`*_test.py` files vs `*.py` source files (excluding `__init__.py`, `conftest.py`); flag if ratio is below 0.5
 - Tests exist but `inline-snapshot` not in dev dependencies and project doesn't use Pydantic
 - `inline-snapshot` used but `dirty-equals` not in dev dependencies
+- TS project uses ESLint + Prettier instead of Biome — just note it, don't flag. Biome is the newer recommended default for *new* projects but existing ESLint setups are valid and rewriting them is a judgment call
+- `tsconfig.json` sets `target: "ES5"` or older — modern Node and evergreen browsers don't need ES5 transpilation and it forces legacy codegen for no benefit (unless a bundler config proves the target is intentional for a specific deployment)
+- `tsconfig.json` has `strict: true` but is missing `verbatimModuleSyntax` — modern projects should enable it to force explicit `import type` syntax
+- `package.json` has no `"type": "module"` on a new-looking project — CommonJS interop is legacy mode, new projects should default to ESM
+- TS project has no `build` script — fine for pure-library projects that publish via `tsc`, but often a sign that the project is missing its bundler / output pipeline
 
 ### CLAUDE.md audit triggers
 

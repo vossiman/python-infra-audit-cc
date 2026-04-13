@@ -198,6 +198,25 @@ Create a fine-grained personal access token with the following permissions (repo
 
 > **Note:** Contents, Pull requests, and Workflows are the obvious ones. Issues, Commit statuses, and Dependabot alerts are easy to miss but required for Renovate to function correctly.
 
+### Repository prerequisites for automerge
+
+`platformAutomerge: true` is a request to GitHub's native auto-merge feature — and GitHub only *engages* auto-merge when the PR has **at least one unmet merge requirement** (typically a required status check). Without that, the API call Renovate makes to enable auto-merge fails, Renovate logs it, and moves on. Every PR ends up with `autoMergeRequest: null` and nothing ever auto-merges. **All three items below are mandatory, not optional, for the automerge rules in this blueprint to actually fire:**
+
+1. **Settings → General → Pull Requests → Allow auto-merge** — must be **checked**. Without this, `platformAutomerge: true` is silently ignored.
+2. **Branch protection on `develop`** (or whichever branch Renovate targets) with **at least one required status check**. This is the gate that makes auto-merge engage. Missing this is the #1 reason "automerge is configured but nothing merges."
+3. **Settings → General → Pull Requests → Automatically delete head branches** — strongly recommended. Keeps the branch list clean after automerges complete; without it you accumulate stale `renovate/*` branches.
+
+### Minimal branch protection for a solo developer
+
+Solo devs often skip branch protection because "there's no one to review." That's a mistake once automerge is in play — branch protection isn't about reviews, it's the trigger that makes auto-merge work at all. Minimal config:
+
+- **Require status checks to pass before merging:** enabled, **strict** (branches must be up to date before merging). Pick your real CI job names (e.g. `ruff`, `pyright`, `test`) as the required checks — not a meta-check like `ci / all`, since those often can't be selected until they've run once.
+- **Require a pull request before merging:** enabled, **0 required reviewers**. You're solo; you don't need to approve your own PRs, you just need the PR envelope so CI has something to check against.
+- **Do not enforce for admins:** unchecked (i.e. admins *can* bypass). Keeps the hotfix escape hatch open.
+- **Allow force pushes / deletions:** your choice — neither affects automerge.
+
+This single change fixes two problems at once: auto-merge actually engages, and broken code stops being mergeable. The audit will flag projects that have `platformAutomerge: true` configured but it cannot verify branch protection rules from the filesystem — always **manually verify** the three items above when the audit recommends automerge.
+
 ### Branch strategy
 
 Renovate should target a **`develop`** or **`test`** branch rather than `main`. This keeps dependency update churn out of your release branch and gives you a staging area to validate updates before promoting them.
@@ -215,58 +234,148 @@ Renovate should target a **`develop`** or **`test`** branch rather than `main`. 
 
 ### Recommended `renovate.json`
 
-```json
+```jsonc
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",       // [ADAPT] use config:recommended if best-practices is too opinionated
-    ":maintainLockFilesMonthly"    // match our monthly schedule (best-practices defaults to weekly)
-  ],
+  "extends": ["config:best-practices", ":maintainLockFilesMonthly"],
   "baseBranchPatterns": ["develop", "test"],  // [ADAPT] match your branch names
   "labels": ["dependencies"],
-  "schedule": ["before 5am on the first day of the month"],
+  "configMigration": true,
   "prHourlyLimit": 0,
-  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "behind-base-branch",
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
   "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true,
+    "minimumReleaseAge": null
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "postUpgradeTasks": {                          // [ADAPT] only needed for monorepos with per-project lock files
+    "commands": ["make sync-locks"],
+    "fileFilters": ["**/uv.lock", "**/pyproject.toml"],
+    "executionMode": "branch"
+  },
   "packageRules": [
     {
-      "description": "GitHub Actions: no automerge (review digest and version bumps)",
+      "description": "Automerge all patch + digest + pin updates regardless of manager",
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge minor updates for npm dev dependencies",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true
+    },
+    {
+      "description": "Group and automerge TypeScript type definitions",
+      "matchPackageNames": ["@types/**"],
+      "groupName": "type definitions",
+      "automerge": true
+    },
+    {
+      "description": "Group linters and formatters",
+      "matchPackageNames": ["ruff", "pyright", "@biomejs/biome", "eslint*", "prettier*"],
+      "groupName": "linters and formatters"
+    },
+    {
+      "description": "Group test tooling",
+      "matchPackageNames": ["pytest*", "vitest", "@vitest/**", "playwright", "@playwright/**", "jsdom"],
+      "groupName": "test tooling"
+    },
+    {
+      "description": "GitHub Actions: no automerge for major/minor bumps (review them)",
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major", "minor"],
       "automerge": false
     },
     {
-      "description": "Python deps: bump >= floors so they don't silently go stale",
-      "matchManagers": ["pep621"],
-      "rangeStrategy": "bump"
-    },
-    {
-      "description": "Pre-commit hooks: no automerge (review rev bumps)",
+      "description": "Pre-commit hooks: no automerge for major/minor bumps (review them)",
       "matchManagers": ["pre-commit"],
+      "matchUpdateTypes": ["major", "minor"],
       "automerge": false
+    },
+    {
+      "description": "App mode: pin exact Python versions. [ADAPT] use 'bump' instead if this is a library.",
+      "matchManagers": ["pep621"],
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "App mode: pin exact npm versions. [ADAPT] use 'bump' instead if this is a library.",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "pin"
     },
     {
       "description": "PyPI: 3-day stability gate against broken/malicious releases",
       "matchDatasources": ["pypi"],
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "npm: 3-day stability gate against broken/malicious releases",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "3 days"
     }
-  ],
-  "postUpgradeTasks": {                          // [ADAPT] only needed for monorepos with per-project lock files
-    "commands": ["make sync-locks"],
-    "fileFilters": ["**/uv.lock", "**/pyproject.toml"],
-    "executionMode": "branch"
-  }
+  ]
 }
 ```
 
+> **Note on the missing `schedule` field:** earlier versions of this blueprint set `"schedule": ["before 5am on the first day of the month"]` inside `renovate.json`. The current reference drops it because the outer GitHub Actions workflow cron (`infra/blueprints/renovate.yml`, scheduled for the first Monday of each month) is already the throttle. Renovate's internal schedule was belt-and-suspenders. With the schedule removed, Renovate runs whenever the workflow is triggered (monthly cron + `workflow_dispatch`), which is the behavior you actually want.
+
 > **Note:** Use `renovate.json5` (JSONC) if you want inline comments. Renovate supports both formats.
 
-### Why `rangeStrategy: "bump"` matters
+### Why `rangeStrategy` depends on project type
 
-Renovate's default `rangeStrategy` is `"auto"`. For Python dependencies in `pyproject.toml` (`pep621` manager), `"auto"` means:
-- New version **in-range** (e.g. `ruff>=0.15.2` and `0.15.6` is released) — Renovate only updates the lockfile, leaves `pyproject.toml` untouched
-- New version **out-of-range** (e.g. a new major version) — Renovate replaces the range
+This is the single most important Renovate setting and the right value depends on whether your project is an **application** or a **library**. Renovate's own [Dependency Pinning](https://docs.renovatebot.com/dependency-pinning/) docs make the same distinction. The infra-audit skill detects project type automatically (see "Detected project type" below) and flags mismatches.
 
-This means `>=` version floors silently go stale. With `"bump"`, Renovate proposes PRs like `ruff>=0.15.2` → `ruff>=0.15.6` even when the new version already satisfies the range.
+**Applications (deployed, not published to a registry):**
+
+Use `rangeStrategy: "pin"`. The rule is:
+
+```jsonc
+{
+  "matchManagers": ["pep621", "npm"],
+  "rangeStrategy": "pin"
+}
+```
+
+Renovate converts ranges like `^1.2.3` / `>=1.2.3` into exact pins (`1.2.3`) directly in `package.json` / `pyproject.toml`. PR diffs show exactly what version changed, CI builds exactly what you deployed, and you do not rely on the lockfile alone for reproducibility. The lockfile and the manifest agree, and any reviewer reading the diff sees the exact delta without cross-referencing.
+
+**Libraries (published to PyPI / npm / a private registry):**
+
+Use `rangeStrategy: "bump"`. The rule is:
+
+```jsonc
+{
+  "matchManagers": ["pep621", "npm"],
+  "rangeStrategy": "bump"
+}
+```
+
+Renovate keeps range operators (`^1.2.3`, `>=1.2.3`) but bumps the lower bound when a new version exists. This lets downstream consumers of your library dedupe: if two libraries depend on `requests>=2.31`, the consumer installs one version, not two. Pinning exact versions in a library forces consumers into version conflicts for no benefit.
+
+**Why not `"auto"` (the Renovate default)?**
+
+`"auto"` is silently different per manager. For `pep621` it means "only update the lockfile, leave `pyproject.toml` untouched" — so `>=` version floors silently go stale and over time your declared minimum versions diverge from reality. For `npm` it sometimes pins, sometimes widens, depending on the existing range. Neither behavior is what you want; always choose `pin` or `bump` explicitly based on project type.
+
+### Detected project type
+
+The infra-audit skill's detection script (`detect.sh`) labels each project as one of:
+
+- **`application`** — any of these signals present: a `Dockerfile` / `compose.yml`, `alembic.ini`, a web framework in runtime dependencies (`fastapi` / `flask` / `django` / `celery`), a PaaS deploy file (`Procfile`, `fly.toml`, `railway.toml`, `render.yaml`, `app.yaml`, `vercel.json`, `netlify.toml`), or `"private": true` in `package.json`.
+- **`library`** — no application signals, **and** one of: `[project].classifiers` in `pyproject.toml` includes a `Development Status ::` entry, or `package.json` is not private and has `main` / `exports` / `bin` fields (i.e. shaped like a publishable package).
+- **`unknown`** — neither set of signals matched. The audit emits an **INFO** asking you to set `rangeStrategy` explicitly rather than guessing on your behalf. App signals always win over library signals (a library that ships a Dockerfile for its own test suite is still an application from the perspective of its *own* dependency policy).
+
+The audit WARNs when the detected type and the configured `rangeStrategy` disagree:
+
+- Detected as **application** but `rangeStrategy` is `"bump"` or `"auto"` / unset → "apps should pin for reproducible deploys"
+- Detected as **library** but `rangeStrategy` is `"pin"` → "libraries should use `bump` so downstream consumers can dedupe"
+- Detected as **unknown** with no explicit `rangeStrategy` → INFO: "could not determine project type; set `rangeStrategy` explicitly to `pin` (app) or `bump` (library)"
 
 ### Why `pinDigests` for GitHub Actions
 
@@ -274,21 +383,72 @@ Without digest pinning, action refs like `actions/checkout@v6` use a mutable Git
 
 **Note:** `config:best-practices` includes `helpers:pinGitHubActionDigests` which handles this automatically — no manual `pinDigests: true` rule needed. Digest pinning is only practical when Renovate is running — otherwise you'd be stuck maintaining SHAs by hand.
 
-### Why `prHourlyLimit: 0` for monthly schedules
+### Why `prHourlyLimit: 0`
 
-Renovate defaults to `prHourlyLimit: 2` — at most 2 PRs created per clock hour. This protects against CI flooding during onboarding. But for monthly-scheduled repos, it's counterproductive: Renovate gets a narrow window, creates 2-4 PRs, and defers the rest to next month. You end up manually re-triggering runs to get all your updates.
+Renovate defaults to `prHourlyLimit: 2` — at most 2 PRs created per clock hour. This protects against CI flooding when Renovate runs continuously (default: hourly) against a repo with a large backlog. For repos where the **outer** trigger is infrequent (e.g. a monthly GitHub Actions cron running the workflow in `infra/blueprints/renovate.yml`), this is counterproductive: Renovate only runs for a few minutes, creates 2-4 PRs, then the workflow exits. The remaining updates wait another month. You end up manually re-triggering `workflow_dispatch` runs to drain the queue.
 
-With a monthly schedule, the schedule itself is the throttle. Set `prHourlyLimit: 0` (no limit) so Renovate delivers all updates in one batch. The `prConcurrentLimit` (default: 10) still caps total open PRs as a safety net.
+With an infrequent outer trigger, the workflow cadence itself is the throttle. Set `prHourlyLimit: 0` (no limit) so Renovate delivers the full batch in one run. `prConcurrentLimit: 10` still caps the number of simultaneously open PRs as a safety net — with `rebaseWhen: "behind-base-branch"` + `platformAutomerge`, the queue drains fast enough that 10 is plenty.
 
-| Schedule frequency | Recommended `prHourlyLimit` |
+| Outer trigger cadence | Recommended `prHourlyLimit` |
 |---|---|
-| Hourly / daily | `2` (default) — catches up across frequent runs |
-| Weekly | `2` is fine — catches up within a week |
-| Monthly | `0` — otherwise updates drip-feed across months |
+| Hourly / daily (Renovate self-hosted polling) | `2` (default) — catches up across frequent runs |
+| Weekly (GH Actions cron) | `2` is fine |
+| Monthly (GH Actions cron) | `0` — otherwise updates drip-feed across months |
 
-### Why `rebaseWhen: "conflicted"`
+### Why `rebaseWhen: "behind-base-branch"`
 
-Renovate's default `rebaseWhen` is `"auto"`, which rebases every open PR on each push to the base branch. For monthly schedules where PRs sit open longer, this floods CI with unnecessary reruns every time you push to `develop`. `"conflicted"` only rebases when there is an actual merge conflict — the practical trigger that actually requires a rebase.
+Renovate's default is `"auto"` and the older "save CI" advice was `"conflicted"` — but both fall apart the moment you're running with `platformAutomerge: true` and a monthly batch of 10+ PRs. With `"conflicted"`, Renovate waits for an *actual* merge conflict before rebasing, which means the second-most-recent PR sits "behind base" with stale CI results and GitHub's auto-merge refuses to land it (strict branch protection requires the branch to be up-to-date). You end up merging one PR per `develop` push, then manually poking the rest.
+
+`"behind-base-branch"` rebases every open PR the moment `develop` moves forward, so the whole batch stays up-to-date and drains through auto-merge as CI finishes. Yes, this burns more CI minutes; that's the price of automerge actually working. If CI cost is a real concern, reduce the schedule frequency, not this setting.
+
+### Why `platformAutomerge` + `automergeStrategy: "squash"`
+
+`platformAutomerge: true` hands merging off to GitHub's native auto-merge feature. Renovate flags the PR with "auto-merge when ready," GitHub waits for required status checks (from branch protection) to turn green, then merges. Renovate doesn't poll, doesn't re-check, doesn't need a long-running process — the merge happens via GitHub's own infrastructure.
+
+`automergeStrategy: "squash"` keeps history linear: every merged renovate PR becomes a single commit on `develop` with the PR title as the commit subject. Matches a clean review workflow and makes `git log` on `develop` readable as a sequence of intentional changes rather than a forest of "update X.y.z" merge commits.
+
+**Prerequisite:** GitHub's native auto-merge only engages when the PR has at least one unmet merge requirement — see [Repository prerequisites for automerge](#repository-prerequisites-for-automerge). Without branch protection, `platformAutomerge: true` is silently a no-op.
+
+### Why automerge `patch` / `pin` / `digest` updates
+
+These update types are near-zero semver risk:
+- **`patch`**: semver contract says no breaking changes, no new features — just bug fixes
+- **`pin`**: converts `^1.2.3` → `1.2.3` (or bumps the existing pin). Cannot change runtime behavior.
+- **`digest`**: refreshes an immutable SHA pin for the *same* tag. Pure supply-chain hygiene.
+
+Reviewing these manually is pure toil — there's nothing to judge. Automerging them is why `config:best-practices` ships `helpers:pinGitHubActionDigests` in the first place: so you *can* automate the refresh. CI still runs and blocks the merge if a patch accidentally broke something, so the safety net is intact.
+
+### Why automerge dev-dependency minor updates
+
+Minor bumps of dev dependencies (biome, vitest, playwright, @types/*, etc.) cannot break production at runtime — they only run in CI and local dev. Worst case: a test tool ships a bug, CI goes red, you see it immediately and roll back the PR. That's the same signal you'd have with manual review, but without you being in the loop. Runtime dependencies (everything in the main `dependencies` block) still require human review for minors because their failure mode is "prod crashes," not "CI goes red."
+
+**Important caveat for Python projects:** the rule is `matchDepTypes: ["devDependencies"]`, which only matches the `devDependencies` block in `package.json` (Renovate's `npm` manager). Renovate's `pep621` manager tags Python dev tools with different `depType` values — `optional-dependencies/dev`, `dependency-groups/dev`, etc. — so **this rule does not automerge Python dev dependencies.** Python dev deps still get the patch/pin/digest automerge rule (which matches on update type, not depType), but minor bumps of Python dev tools flow through normal review. That's intentional: the Python dev-dep ecosystem is smaller and minor bumps are easier to triage by hand than the npm dev-dep flood. If your project specifically wants minor-automerge for Python dev deps too, add a second rule with `matchManagers: ["pep621"]` + `matchDepTypes: ["dependency-groups/dev", "optional-dependencies/dev"]` (adjust to match your `pyproject.toml` layout).
+
+### Why group (but not automerge) linters and test tooling
+
+Linters and test runners are dev dependencies, which the rule above would otherwise automerge. We explicitly override that with a group rule because:
+
+- **Linters (ruff, biome, eslint, prettier):** a minor bump routinely adds new rules. Those rules fire on your existing codebase and create a wall of errors. Automerging that leaves CI red on every unrelated PR until someone manually runs the autofixer or disables the rule. Grouping all linter bumps into one PR means you triage them together, once, intentionally.
+- **Test tooling (pytest, vitest, playwright, jsdom):** test framework minors frequently change assertion behavior, snapshot formats, or runner semantics. When they break tests, bisecting a group of 6 tool bumps is way easier than bisecting 6 separately-merged PRs.
+
+The group rule has no `automerge: true`, which overrides the dev-dep rule above. You review one PR per tooling category per month.
+
+### Why `vulnerabilityAlerts.automerge` + `minimumReleaseAge: null`
+
+Security fixes should not wait on the normal 3-day stability gate — by the time a CVE is public, the fix is more valuable than the risk of a bad release. The `vulnerabilityAlerts` block overrides both policies at once:
+
+- `automerge: true` — security PRs bypass the linter/test-tooling grouping rules (they're not tooling, they're fixes) and merge themselves as soon as CI passes
+- `minimumReleaseAge: null` — bypasses the 3-day PyPI/npm stability gate for security releases specifically
+
+The `labels: ["security"]` entry ensures these PRs are visually distinct in the GitHub UI so you can still review the history after the fact.
+
+### Why `lockFileMaintenance.automerge`
+
+`:maintainLockFilesMonthly` tells Renovate to open a monthly PR that refreshes your lockfile against current transitive dependencies *without* bumping any direct deps. It's a transitive refresh, and transitive drift is one of the most common sources of "works on my machine" bugs. The PR touches lockfiles only (`uv.lock`, `pnpm-lock.yaml`, etc.) — low review value, high automation value. Automerging it is the same risk calculus as patch updates.
+
+### Why `configMigration`
+
+Renovate deprecates config options regularly (e.g. `baseBranches` → `baseBranchPatterns`). `configMigration: true` makes Renovate open a PR whenever your config uses deprecated syntax, with the migrated version ready to merge. Zero ongoing effort to stay current with Renovate itself — set once and forget.
 
 ### Why `postUpgradeTasks`
 
@@ -324,7 +484,102 @@ Delays PR creation until a PyPI package has been published for at least 3 days. 
 `config:best-practices` includes this for npm (`security:minimumReleaseAgeNpm`) but not for PyPI, so we add our own via `packageRules`.
 
 ### Minimum acceptable config
-A `renovate.json` extending `config:best-practices`, with `rangeStrategy: "bump"` for Python deps, `prHourlyLimit: 0` for monthly schedules, `osvVulnerabilityAlerts`, and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors.
+A `renovate.json` extending `config:best-practices`, with `rangeStrategy: "bump"` for Python deps, `prHourlyLimit: 0` for monthly schedules, `osvVulnerabilityAlerts`, `platformAutomerge` + automerge rules for patch/pin/digest updates (unless the team has an explicit reason to review every PR), and a CI workflow to run it. Projects without Renovate rely on manual dependency updates, which tend to drift. Projects _with_ Renovate but default `rangeStrategy` will still have stale version floors. Projects with automerge configured but no branch protection on the target branch will end up with `autoMergeRequest: null` on every PR and nothing will ever merge — see [Repository prerequisites for automerge](#repository-prerequisites-for-automerge).
+
+---
+
+## 4c. TypeScript / Node Toolchain
+
+**Applies to:** projects with a `package.json` at the root. Pure-Python projects should skip this section entirely — the audit will not flag anything here.
+
+**Config locations:**
+- `package.json` + `pnpm-lock.yaml` (or equivalent lockfile) in project root
+- `tsconfig.json` for TypeScript compile settings
+- `biome.json` or `biome.jsonc` for linting + formatting
+- `vitest.config.ts` for test runner config (if tests exist)
+
+**Canonical blueprints:**
+- `infra/blueprints/package.json` — scripts, devDependencies floors, engines, packageManager
+- `infra/blueprints/tsconfig.json` — strict TypeScript baseline
+- `infra/blueprints/biome.jsonc` — linter + formatter + import sort
+
+### Package manager: pnpm
+
+Prefer **pnpm** over npm / yarn / bun:
+
+- Content-addressable store → dramatically smaller `node_modules` on machines running multiple projects (each dep exists once on disk, regardless of how many projects use it)
+- Strict by default: no phantom dependencies — you cannot import a transitive dep you did not declare, which prevents silent breakage when an indirect dep drops a package
+- First-class workspace support for monorepos (`pnpm-workspace.yaml`)
+- Mature Renovate + GitHub Actions support via `pnpm/action-setup@v4`
+
+**Pin the exact version** via the `packageManager` field (Corepack reads this automatically):
+
+```json
+"packageManager": "pnpm@9.12.0"
+```
+
+Renovate will bump this automatically. Set `engines.node` as a **floor** (`">=20"`), not an exact pin — that lets CI and dev machines move forward independently as long as they stay above the minimum.
+
+### TypeScript: strict mode is non-negotiable
+
+Strict mode is the only reason TypeScript buys you anything over JSDoc with inference. Enable these settings in `tsconfig.json` → `compilerOptions`:
+
+- `strict: true` — the umbrella flag that enables `strictNullChecks`, `noImplicitAny`, `strictFunctionTypes`, and friends
+- `noUncheckedIndexedAccess: true` — catches `arr[0]` returning `T | undefined` instead of `T`. One of the highest-ROI flags: it forces you to handle the "array index out of bounds" case that JavaScript normally hides
+- `noImplicitOverride: true` — catches accidental method shadowing in class hierarchies
+- `verbatimModuleSyntax: true` — forces explicit `import type` for type-only imports, which prevents compile-time imports from accidentally leaking into runtime bundles
+- `isolatedModules: true` — required if anything in the toolchain (Vitest, esbuild, swc, tsup) compiles files individually instead of as a project
+
+`noEmit: true` by default. Most modern stacks use a separate bundler (Vite, esbuild, tsup, Vercel, Next.js) and TypeScript is *only* a type checker — not a code generator. Flip to `false` only when you publish compiled JS as an npm package or ship the output of `tsc` directly.
+
+### Biome: one tool for lint + format + import-sort
+
+Biome replaces ESLint + Prettier + `eslint-plugin-import` with a single Rust binary. The benefits mirror `ruff` on the Python side:
+
+- One config file, not three
+- One Renovate PR stream, not three (and no plugin-compatibility matrix)
+- 10-100× faster than the ESLint equivalent
+- Opinionated defaults that match the community 90% of the time
+
+**ESLint + Prettier projects are valid** — the audit does *not* flag them. Rewriting a working ESLint setup to Biome is a judgment call about migration cost, not an infrastructure defect. But **new** projects should pick Biome unless they have a specific ESLint plugin they cannot do without. Migration path: `biome migrate eslint` and `biome migrate prettier` read existing configs and translate them.
+
+### Vitest for tests
+
+Vitest is the de-facto test runner for TypeScript projects on Vite or native ESM. Jest is fine for legacy projects, but Vitest:
+
+- Runs native ESM without a Babel transform layer
+- Shares config with Vite (if the project already uses Vite)
+- Has a Jest-compatible API, so migration is mostly a `find / replace`
+- Is significantly faster in watch mode (sub-second reruns on incremental changes)
+
+For E2E and browser tests, Playwright is the standard. The audit treats `@playwright/test` as a test tooling package for grouping purposes (same as Vitest).
+
+### Required package.json scripts
+
+The audit expects these scripts to exist in `package.json` so CI can invoke them uniformly:
+
+- **`lint`** — runs the configured linter (e.g. `biome check .`)
+- **`typecheck`** — runs `tsc -b --noEmit` or equivalent (not covered by `build` alone if `build` emits JS)
+- **`test`** — runs the test suite (e.g. `vitest run` — the non-watch variant for CI)
+- **`build`** — optional but standard; runs the bundler or `tsc -b` if shipping compiled output
+
+Without these script names, CI workflows need custom per-project commands and `renovate` / audit tooling cannot provide uniform recommendations.
+
+### Lockfile hygiene
+
+- **Always commit the lockfile** — `pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` / `bun.lock(b)`. Without it, `pnpm install` resolves versions anew on every machine and you lose reproducibility (the JS analogue of committing `uv.lock`).
+- **Exactly one lockfile**. If both `pnpm-lock.yaml` and `package-lock.json` exist, one of them is stale and installs will disagree across machines. Pick one package manager, delete the other lockfile.
+- **`packageManager` field + lockfile must agree.** If `packageManager: "pnpm@..."` is set, `pnpm-lock.yaml` must exist (and no other lockfile). Corepack will refuse to install otherwise.
+
+### `.nvmrc` and `engines.node`
+
+If both exist, they must agree. Common pattern: `engines.node = ">=20"` (a range) and `.nvmrc = "20"` (an exact major). That's consistent. Inconsistent: `engines.node = ">=20"` but `.nvmrc = "18"` — means your dev environment runs a Node version your own package rejects.
+
+You do not need both. `.nvmrc` is for `nvm` / `fnm` / `volta` users to auto-switch Node versions; `engines.node` is what Corepack and `npm install` enforce. Pick one or keep them in sync.
+
+### Minimum acceptable config
+
+A `package.json` with: `packageManager` field, `engines.node`, `typescript` + lint + test scripts, and **one of** Biome or ESLint+Prettier configured. A `tsconfig.json` with `strict: true`. A single committed lockfile matching the declared package manager. Projects without `tsconfig.json` but with TypeScript source files run TypeScript in default non-strict mode, which defeats the point of using TypeScript at all.
 
 ---
 

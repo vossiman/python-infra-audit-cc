@@ -1,35 +1,89 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
-    ":maintainLockFilesMonthly"
-  ],
+  "extends": ["config:best-practices", ":maintainLockFilesMonthly"],
   "baseBranchPatterns": ["develop", "test"],
   "labels": ["dependencies"],
-  "schedule": ["before 5am on the first day of the month"],
+  "configMigration": true,
   "prHourlyLimit": 0,
-  "rebaseWhen": "conflicted",
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "behind-base-branch",
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
   "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true,
+    "minimumReleaseAge": null
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "postUpgradeTasks": {
+    "commands": ["make sync-locks"],
+    "fileFilters": ["**/uv.lock", "**/pyproject.toml"],
+    "executionMode": "branch"
+  },
   "packageRules": [
     {
-      "description": "GitHub Actions: no automerge (review digest and version bumps)",
+      "description": "Automerge all patch + digest + pin updates regardless of manager",
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Automerge minor updates for npm dev dependencies",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor"],
+      "automerge": true
+    },
+    {
+      "description": "Group and automerge TypeScript type definitions",
+      "matchPackageNames": ["@types/**"],
+      "groupName": "type definitions",
+      "automerge": true
+    },
+    {
+      "description": "Group linters and formatters",
+      "matchPackageNames": ["ruff", "pyright", "@biomejs/biome", "eslint*", "prettier*"],
+      "groupName": "linters and formatters"
+    },
+    {
+      "description": "Group test tooling",
+      "matchPackageNames": ["pytest*", "vitest", "@vitest/**", "playwright", "@playwright/**", "jsdom"],
+      "groupName": "test tooling"
+    },
+    {
+      "description": "GitHub Actions: no automerge for major/minor bumps (review them)",
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major", "minor"],
       "automerge": false
     },
     {
-      "description": "Python deps: bump >= floors so they don't silently go stale",
+      "description": "Pre-commit hooks: no automerge for major/minor bumps (review them)",
+      "matchManagers": ["pre-commit"],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false
+    },
+    {
+      "description": "Library mode: this repo is distributed as a Claude Code skill via npm. Python deps use bump so >= floors don't go stale. Apps should use rangeStrategy: pin instead (see blueprint §4b).",
       "matchManagers": ["pep621"],
       "rangeStrategy": "bump"
     },
     {
-      "description": "Pre-commit hooks: no automerge (review rev bumps)",
-      "matchManagers": ["pre-commit"],
-      "automerge": false
+      "description": "Library mode: this repo is distributed via npm (not a private app). npm deps use bump so consumers can dedupe. Apps should use rangeStrategy: pin instead (see blueprint §4b).",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "bump"
     },
     {
       "description": "PyPI: 3-day stability gate against broken/malicious releases",
       "matchDatasources": ["pypi"],
       "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "npm: 3-day stability gate against broken/malicious releases",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "3 days"
     }
   ]
 }
+

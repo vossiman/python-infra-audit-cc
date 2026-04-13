@@ -47,3 +47,23 @@ tools:
 runtime:
   python: "3.14"
   node: "20"
+
+# --- Node / TypeScript toolchain floors (package.json devDependencies) ---
+# Used by the `ts` audit area. Projects with a package.json are compared
+# against these ranges — only flag projects significantly behind the floors.
+node_tools:
+  typescript: "^5.6.0"       # typescript
+  biome: "^1.9.0"            # @biomejs/biome
+  vitest: "^2.0.0"           # vitest
+  playwright: "^1.47.0"      # @playwright/test
+
+# --- Node package manager baseline ---
+# The major line is baselined here; the exact pin lives in each project's
+# package.json "packageManager" field (Corepack reads it).
+node_package_manager:
+  pnpm: "9"
+
+# --- GitHub Actions (Node ecosystem) ---
+# setup-node is already baselined under `actions:` above.
+node_actions:
+  pnpm-action-setup: v4      # pnpm/action-setup
