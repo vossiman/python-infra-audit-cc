@@ -575,19 +575,26 @@ function install(isGlobal, isOpencode) {
     }
   }
 
-  // ── 2. infra/blueprints/*.yml ──
+  // ── 2. infra/blueprints/* (CI + renovate YAML, plus TS reference templates) ──
   const blueprintsDir = path.join(src, 'infra', 'blueprints');
   const blueprintsDest = path.join(configDir, 'infra', 'blueprints');
   fs.mkdirSync(blueprintsDest, { recursive: true });
-  for (const ymlName of ['ci.yml', 'renovate.yml']) {
-    const ymlSrc = path.join(blueprintsDir, ymlName);
-    const ymlDest = path.join(blueprintsDest, ymlName);
-    fs.copyFileSync(ymlSrc, ymlDest);
-    if (fs.existsSync(ymlDest)) {
-      console.log(`  ${green}✓${reset} Installed infra/blueprints/${ymlName}`);
-      installedFiles.push({ rel: `infra/blueprints/${ymlName}`, abs: ymlDest });
+  const BLUEPRINT_FILES = [
+    'ci.yml',
+    'renovate.yml',
+    'package.json',
+    'tsconfig.json',
+    'biome.jsonc',
+  ];
+  for (const bpName of BLUEPRINT_FILES) {
+    const bpSrc = path.join(blueprintsDir, bpName);
+    const bpDest = path.join(blueprintsDest, bpName);
+    fs.copyFileSync(bpSrc, bpDest);
+    if (fs.existsSync(bpDest)) {
+      console.log(`  ${green}✓${reset} Installed infra/blueprints/${bpName}`);
+      installedFiles.push({ rel: `infra/blueprints/${bpName}`, abs: bpDest });
     } else {
-      failures.push(`infra/blueprints/${ymlName}`);
+      failures.push(`infra/blueprints/${bpName}`);
     }
   }
 
