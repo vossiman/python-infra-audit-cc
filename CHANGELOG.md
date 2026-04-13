@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1 (2026-04-13)
+
+### Blueprint enhancements
+
+- **New §4 subsection: "Playwright browser caching".** Documents the canonical pattern for caching Playwright browser binaries in CI: `actions/cache@v4` keyed on `~/.cache/ms-playwright` + `hashFiles('pnpm-lock.yaml', 'uv.lock')` with a `playwright-${{ runner.os }}-` restore-keys fallback. Without this cache, every CI run downloads 150-300 MB of Chromium (15-30s per job, plus occasional hangs when Playwright's CDN is flaky). With it, subsequent runs restore in ~2s.
+- **Install without `--with-deps`.** The blueprint now explicitly rejects `playwright install --with-deps` in CI: on `ubuntu-latest` the required system libs (libnss3, libxss1, libatk-bridge2.0-0, etc.) are already pre-installed, so `--with-deps` adds ~30s of redundant `apt-get` and requires `sudo` (which some hardened runners reject). Only needed when running Playwright from a bare base image (e.g. Alpine in a custom Dockerfile).
+- **Cross-job cache sharing documented.** Projects with both a Python Playwright job (`pytest-playwright`) and a Node Playwright job (`@playwright/test`) should use the same cache key so GitHub Actions' repo-scoped cache gives the second job a ~2s restore from the first job's population.
+
+### Audit improvements
+
+- 4 new CI audit triggers for Playwright: flag `--with-deps` in CI, flag missing `actions/cache` when `playwright install` is invoked, flag cache keys that don't include a lockfile hash (never-invalidating cache), and flag mismatched cache keys between a Python and a Node Playwright job in the same workflow.
+
 ## 1.3.0 (2026-04-13)
 
 ### New features

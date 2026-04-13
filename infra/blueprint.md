@@ -164,6 +164,36 @@ At minimum: `trailing-whitespace`, `end-of-file-fixer`, `detect-private-key`, an
 - **`ruff format --check`**: Ensures formatting without modifying files in CI
 - **`[ADAPT]`**: `python-version` and branch list are project-specific
 
+### Playwright browser caching
+
+Projects that run Playwright tests in CI (either via `pytest-playwright` on the Python side or `@playwright/test` on the Node side) should **cache the browser binaries between runs and install without system deps**. Without caching, every CI run downloads 150-300 MB of Chromium — that is 15-30 seconds per job, plus occasional hangs when Playwright's download CDN is flaky, plus bandwidth cost.
+
+**The pattern** (works for both Python and Node Playwright jobs):
+
+```yaml
+- name: Cache Playwright browsers
+  uses: actions/cache@v4
+  with:
+    path: ~/.cache/ms-playwright
+    key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'uv.lock') }}
+    restore-keys: playwright-${{ runner.os }}-
+
+- name: Install Playwright browsers
+  run: pnpm exec playwright install chromium           # or: .venv/bin/playwright install chromium
+```
+
+**Why each part:**
+
+- **Path**: `~/.cache/ms-playwright` is the fixed default Playwright download location on Linux/macOS. (On Windows runners it is `%USERPROFILE%\AppData\Local\ms-playwright`.) Don't override with `PLAYWRIGHT_BROWSERS_PATH` in CI — the default is cacheable as-is.
+- **Cache key includes both lockfiles** (`pnpm-lock.yaml` + `uv.lock`): whichever one pins Playwright, any bump to it invalidates the cache and triggers a fresh download. In a pure-Python project, drop `pnpm-lock.yaml` from `hashFiles()`; in a pure-Node project, drop `uv.lock`.
+- **`restore-keys` fallback**: if the exact key misses (e.g. a lockfile bumped one unrelated dep), GitHub falls back to the most recent cache entry matching the prefix. Playwright's `install` will then only download the delta or re-verify the existing binaries, which is still much faster than a cold download.
+- **Install only the browsers you use** (usually `chromium`). Installing `all` downloads Firefox and WebKit too, tripling the cache size for no benefit unless your tests actually run in multiple engines.
+- **Do NOT pass `--with-deps`.** That flag installs the system apt packages Playwright needs (libnss3, libxss1, libatk-bridge2.0-0, etc.) via `apt-get install`. On `ubuntu-latest` runners those packages are **already pre-installed**, so `--with-deps` is a 30-second no-op that also requires `sudo` (which some hardened runners reject). Skip it in CI. You only need `--with-deps` on bare base images (e.g. a custom Dockerfile running Playwright from Alpine).
+
+**Sharing the cache across multiple jobs:** if you have both a Python test job (using `pytest-playwright` via `.venv/bin/playwright install chromium`) and a Node E2E job (using `pnpm exec playwright install chromium`), give them the **same cache key**. GitHub's cache is scoped per repo, so both jobs will read/write the same entry. First job populates, second job gets a ~2s restore. The key must match byte-for-byte — keep the `key` expression identical across jobs.
+
+**Why `pnpm-lock.yaml` / `uv.lock` and not `package.json` / `pyproject.toml`:** the lockfile contains the **exact** Playwright version, down to the patch. The manifest contains the range. Two PRs that both say `@playwright/test: ^1.47.0` can resolve to different patches; the lockfile reflects what you actually installed. Hashing the lockfile invalidates the cache precisely when the binary version changes.
+
 ### Minimum acceptable CI
 At minimum: a lint job and a test job, triggered on PRs.
 
